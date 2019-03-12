@@ -1,0 +1,15 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio 15
+VisualStudioVersion = 15.0.28307.438
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{F16D4249-6279-474E-8826-742E7FF7445C}") = "PacManDiscovery", "PacManDiscovery\PacManDiscovery.z80cdproj", "{246EC049-553C-4188-88D5-63AB91A5AE0B}"
+EndProject
+Global
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {EEA71E90-09D4-45DF-9F1B-EB8799C8DBD1}
+	EndGlobalSection
+EndGlobal

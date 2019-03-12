@@ -1,0 +1,30 @@
+  .org #5D26
+
+; External symbols
+
+  di             ; Disable the interrupt
+  im 1           ; Use interrupt mode 1 
+  ld d,yh        ; DE := IY
+  ld e,yl        ; DE point to the ERR_NR system variable (#5C3A)
+  ld b,#25       ; B := #25 (37), later we'll use it as a counter
+  ex de,hl       ; HL = IY
+  ld de,#0019    
+  add hl,de      ; HL points to the PROG variable (#5C53)
+  ld e,(hl)
+  inc hl
+  ld d,(hl)      ; DE points to the start of the BASIC program (#5CCB)
+  ld xh,d        
+  ld xl,e        ; IX points to the start of the BASIC program (#5CCB)
+  ld a,(ix+#7F)  ; Get the byte from offset #7F (from #5D4A). A=#77 
+  ld hl,#0035
+  add hl,de      ; Modify HL so that it points to #5D00
+  push hl        ; Push #5D00 to the stack (RET NZ later will jump here)
+`loop:
+  xor (hl)       ; This loop "decrypts" the code between #5d00-#5d24
+  ld (hl),a      ; it XORs each byte with #77, so actually rewrites
+  inc hl         ; the code
+  djnz `loop
+  and (hl)       ; As the contents (HL) [at this point HL=#5D25] is #F6
+  ret nz         ; This RET NZ jumps to #5D00
+DECRYPT_CODE
+  .defb #77      ; Decryption code

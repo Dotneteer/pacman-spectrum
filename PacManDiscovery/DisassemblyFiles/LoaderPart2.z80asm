@@ -1,0 +1,28 @@
+  .org #5D00
+
+  ld xh,#40         
+  ld xl,#00          ; IX=#4000, load start address
+  ld d,xh            
+  ld e,xl            ; DE=#4000
+  ld hl,#5DA6        
+  ld (iy+#03),l
+  ld (iy+#04),h      ; Sets the ERR_SP system variable to #5DA6.
+                     ; If any error (e.g. Load error) occurs, the execution
+					 ; returns to that address
+  ld sp,#5D7C        ; SP points to the new stack
+                     ; The code will return to the address at #5D7C
+					 ; after the last datablock is loaded.
+  ex de,hl
+  ld xl,e
+  ld a,xl
+  ex de,hl           ; DE (#4000) contains the length of the data to load
+  ld xl,#00          ; IX (#4000) points to the start address
+  and a              ; A=#A6, it will be used as the header's type value
+  ccf                ; sets the carry flag to indicate LOAD operation
+  ex af,af'          ; Saves A and the carry flag to AF'
+  jp L055A           ; Jumps into the LD_BYTES subroutine
+                     ; That routine loads #4000 bytes from address #4000
+					 ; and overwrites this code.
+					 ; When load completes, the code returns to the address
+					 ; stored at #5D7C
+					 
