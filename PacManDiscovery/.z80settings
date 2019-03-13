@@ -1,5 +1,5 @@
 {
   "DefaultTapeFile": "TapeFiles\\Pac-Man.tzx",
   "DefaultAnnotationFile": "Annotations.disann",
-  "DefaultCodeFile": "Z80CodeFiles\\Code.z80asm"
+  "DefaultCodeFile": "DisassemblyFiles\\PacManCode.z80asm"
 }

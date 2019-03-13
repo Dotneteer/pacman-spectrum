@@ -18,6 +18,12 @@ PR_STRING:
 START:
   .equ #0000
 
+DF_SZ: 
+  .equ #5C6B ; The number of lines (including one blank line) in the lower part of the screen.
+FRAMES:
+  .equ #5C78 ; 3 byte (least significant first), frame counter. Incremented every 20ms.
+
+
 L5B00:
   ld l,(ix+#03)
   ld h,(ix+#04)
@@ -166,21 +172,22 @@ L5BBD:
   ld (hl),d
   ret
 
-; Waits for B*0.145 seconds
+; Waits for B*0.16 seconds
 DelayForB:
   push bc
   ld b,#40
-L5BF4:
-  push bc
-  ld b,#FF
-L5BF7:
-  push bc
-  pop bc
-  djnz L5BF7
-  pop bc
-  djnz L5BF4
-  pop bc
+`loop1:
+  push bc      ; 11T
+  ld b,#FF     ; 7T
+`loop2:
+  push bc      ; 11T
+  pop bc       ; 10T
+  djnz `loop2  ; 13/8T -> inner loop: 8.670T
+  pop bc       ; 10T
+  djnz `loop1  ; 13/8T
+  pop bc       ; outer loop -> 557.504T, 0.16 sec
   ret
+
   rst #38
   nop
   inc e
@@ -229,7 +236,7 @@ L5C1E:
   ld b,b
   nop
   rst #38
-  call z,L7E01
+  call z,#7E01
   ld e,l
   ld a,(hl)
   ld e,l
@@ -995,7 +1002,7 @@ L603C:
   ret
 L605C:
   call L707F
-  ld a,#D8
+  ld a,#D8 ; Opcode of RET C
 L6061:
   ld (#7050),a
   ld hl,#6955
@@ -3019,12 +3026,12 @@ L68EC:
   jr z,L6926
   jp L6B8F
 L6926:
-  ld hl,(#5C78)
+  ld hl,(FRAMES)
 L6929:
   ld a,(#5C08)
   cp #48
   jr z,L6929
-  ld (#5C78),hl
+  ld (FRAMES),hl
   ret
 L6934:
   push bc
@@ -3160,7 +3167,7 @@ L6A30:
   call L756D
   call L72FA
   call L7A50
-  ld hl,(#5C78)
+  ld hl,(FRAMES)
   push hl
   ld bc,#0700
   and a
@@ -3184,8 +3191,8 @@ L6A8E:
   ld hl,#0014
   ld (#681C),hl
   xor a
-  ld (#5C78),a
-  ld (#5C79),a
+  ld (FRAMES),a
+  ld (FRAMES+1),a
   ld (#6817),a
   call L72FA
 L6AAC:
@@ -3396,7 +3403,7 @@ L6C32:
   sub (ix+#01)
   jp z,L7299
 L6C52:
-  ld a,(#5C78)
+  ld a,(FRAMES)
   bit 3,a
   jr nz,L6CAE
 L6C59:
@@ -3757,7 +3764,7 @@ L6EE5:
   call L6B5E
   call L7399
   ld hl,#0700
-  ld (#5C78),hl
+  ld (FRAMES),hl
   ld a,(#6815)
   set 4,a
   set 5,a
@@ -3775,7 +3782,7 @@ StartInit:
 `DelayLoop:
   call DelayForB
   djnz `DelayLoop
-  jp L7C71
+  jp Init
 L6F14:
   call L6B5E
 L6F17:
@@ -3954,7 +3961,8 @@ L702B:
   dec a
   ld (#6818),a
   cp #E1
-  ret c
+L7050:  
+  ret c     ; The code changes this to RET/RET C dynamically
   ld b,#00
   ld h,#5A
   ld l,a
@@ -4032,8 +4040,8 @@ L70B8:
   call L76B3
 L70F2:
   xor a
-  ld (#5C78),a
-  ld (#5C79),a
+  ld (FRAMES),a
+  ld (FRAMES+1),a
   ld hl,#0014
   ld (#681C),hl
   ld a,#25
@@ -4167,8 +4175,8 @@ L7205:
   bit 4,e
   ret z
   xor a
-  ld (#5C78),a
-  ld (#5C79),a
+  ld (FRAMES),a
+  ld (FRAMES+1),a
   inc a
   ld (#6815),a
   ld hl,#0014
@@ -4655,12 +4663,12 @@ L7556:
   ld (#6814),a
   ret
 L756D:
-  ld a,(#5C79)
+  ld a,(FRAMES+1)
   cp #08
   jr c,L758C
   cp #09
   jr nc,L758C
-  ld a,(#5C78)
+  ld a,(FRAMES)
   cp #C0
   jr c,L758C
   ld a,(#6815)
@@ -5100,7 +5108,7 @@ L7834:
   rst #10
   ret
   ld a,#06
-  ld (#5C78),a
+  ld (FRAMES),a
   ld a,(#681B)
   cp #09
   jp z,L6B15
@@ -5435,7 +5443,7 @@ L7A59:
   jp nz,L6B8F
   ld hl,#6955
   ld (#69D6),hl
-  ld a,#D8
+  ld a,#D8      ; Opcode of RET C
   ld (#7050),a
   pop bc
   pop bc
@@ -5741,12 +5749,12 @@ L7C65:
   ld b,#18
   call CL_LINE
   ret
-L7C71:
-  xor a
-  ld (#5C6B),a
+Init:
+  xor a         ; A := 0
+  ld (DF_SZ),a  ; No lines in the lower part of the screen
   ld (#5E96),a
-  ld (#5C79),a
-  ld a,#C9
+  ld (FRAMES+1),a
+  ld a,#C9      ; Opcode of RET
   ld (#7050),a
   ld a,#F0
   ld (#78A3),a
@@ -5809,688 +5817,851 @@ L7CDF:
   djnz L7CC1
   ld hl,#5EE9
   call L5ED8
-  jp L7C71
+  jp Init
 L7CFA:
   call L7C65
   jp L70B8
-  nop
-  nop
-  nop
-  nop
-  nop
-  nop
-  nop
-  nop
-  nop
-  djnz L7D1B
-  djnz L7D1D
-  nop
-  djnz L7D10
-L7D10:
-  nop
-  inc b
-  inc b
-  inc b
-  inc b
-  inc b
-  inc b
-  nop
-  nop
-  inc a
-  inc b
-L7D1B:
-  inc a
-  inc b
-L7D1D:
-  inc b
-  inc a
-  nop
-  nop
-  inc a
-  jr nz,L7D60
-  inc b
-  inc b
-  inc a
-  nop
-  inc a
-  ld a,(hl)
-  rst #38
-  rst #38
-  rrca
-  rst #38
-  ld a,(hl)
-  inc a
-  inc a
-  ld a,(hl)
-  rst #38
-  rst #38
-  rst #28
-  rst #28
-  ld l,(hl)
-  inc l
-  inc (hl)
-  halt
-  rst #30
-  rst #30
-  rst #38
-  rst #38
-  ld a,(hl)
-  inc a
-  inc a
-  ld a,(hl)
-  rst #38
-  rst #38
-  ret p
-  rst #38
-  ld a,(hl)
-  inc a
-  inc a
-  ld a,(hl)
-  sub e
-  sub e
-  rst #38
-  in a,(#92)
-  sub d
-  nop
-  nop
-  nop
-  rst #38
-  rst #38
-  nop
-  nop
-  nop
-  nop
-  nop
-  rst #20
-  and l
-  rst #20
-  nop
-  nop
-  nop
-L7D60:
-  ex af,af'
-  ex af,af'
-  djnz L7D8C
-  ld b,h
-  xor #44
-  nop
-  nop
-  xor #2A
-  jp pe,#8A8A
-  xor #00
-  nop
-  xor #2A
-  jp pe,#2A2A
-  xor #00
-  nop
-  xor #8A
-  jp pe,#2A2A
-  xor #00
-  nop
-  inc a
-  ld b,(hl)
-  ld c,d
-  ld d,d
-  ld h,d
-  inc a
-  nop
-  nop
-  jr L7DB3
-  ex af,af'
-L7D8C:
-  ex af,af'
-  ex af,af'
-  ld a,#00
-  nop
-  inc a
-  ld b,d
-  ld (bc),a
-  inc a
-  ld b,b
-  ld a,(hl)
-  nop
-  nop
-  inc a
-  ld b,d
-  inc c
-  ld (bc),a
-  ld b,d
-  inc a
-  nop
-  nop
-  ex af,af'
-  jr L7DCC
-  ld c,b
-  ld a,(hl)
-  ex af,af'
-  nop
-  nop
-  ld a,(hl)
-  ld b,b
-  ld a,h
-  ld (bc),a
-  ld b,d
-  inc a
-  nop
-  nop
-  inc a
-  ld b,b
-L7DB3:
-  ld a,h
-  ld b,d
-  ld b,d
-  inc a
-  nop
-  nop
-  ld a,(hl)
-  ld (bc),a
-  inc b
-  ex af,af'
-  djnz L7DCF
-  nop
-  nop
-  inc a
-  ld b,d
-  inc a
-  ld b,d
-  ld b,d
-  inc a
-  nop
-  nop
-  inc a
-  ld b,d
-  ld b,d
-L7DCC:
-  ld a,#02
-  inc a
-L7DCF:
-  nop
-  nop
-  inc a
-  inc h
-  inc b
-  inc a
-  jr nz,L7E13
-  nop
-  nop
-  jr nz,#7E03
-  jr z,L7E19
-  ex af,af'
-  ex af,af'
-  nop
-  nop
-  inc a
-  inc h
-  inc a
-  inc h
-  inc h
-  inc a
-  nop
-  nop
-  ld e,(hl)
-  ld d,b
-  ld e,(hl)
-  ld d,d
-  ld d,d
-  ld e,(hl)
-  nop
-  nop
-  rst #20
-  and l
-  and l
-  and l
-  and l
-  rst #20
-  nop
-  rlca
-  rra
-  ccf
-  ld a,a
-  ld a,a
-  rst #38
-  rst #38
-  rst #38
-  ret po
-L7E01:
-  ret m
-  call m,#FEFE
-  rst #38
-  rst #38
-  rst #38
-  call m,#FFFC
-  ld a,a
-  ld a,a
-  ccf
-  rra
-  rlca
-  nop
-  nop
-  rst #38
-L7E13:
-  cp #FE
-  call m,#E0F8
-  rlca
-L7E19:
-  rra
-  ccf
-  ld a,a
-  ld a,a
-  rst #38
-  rst #38
-  rst #38
-  ret po
-  ret m
-  call m,#FEFE
-  rst #38
-  rst #38
-  rst #38
-  call m,#FFFC
-  ld a,a
-  ld a,a
-  ccf
-  rra
-  rlca
-  nop
-  nop
-  rst #38
-  cp #FE
-  call m,#E0F8
-  rlca
-  rra
-  ccf
-  ld a,a
-  ld a,a
-  rst #38
-  rst #38
-  call m,#F8E0
-  cp #FC
-  ret p
-  ret nz
-  nop
-  nop
-  call m,#FFFF
-  ld a,a
-  ld a,a
-  ccf
-  rra
-  rlca
-  nop
-  nop
-  ret nz
-  ret p
-  call m,#F8FE
-  ret po
-  nop
-  nop
-  nop
-  jr L7E75
-  nop
-  nop
-  nop
-  inc a
-  inc a
-  rst #38
-  rst #38
-  rst #38
-  rst #38
-  inc a
-  inc a
-  nop
-  inc a
-  inc b
-  inc b
-  inc b
-  inc b
-  inc b
-  nop
-  nop
-  ld e,h
-  ld d,h
-  ld d,h
-  ld d,h
-L7E75:
-  ld d,h
-  ld e,h
-  nop
-  nop
-  djnz L7EAB
-  ld a,(hl)
-  cp #7E
-  jr nc,L7E90
-  nop
-  djnz #7E9B
-  call m,#FCFE
-  jr L7E98
-  nop
-  djnz L7EC3
-  ld a,h
-  cp #38
-  jr c,L7EC8
-L7E90:
-  nop
-  jr c,L7ECB
-L7E93:
-  jr c,L7E93
-  ld a,h
-  jr c,#7EA8
-L7E98:
-  nop
-  nop
-  or #1F
-  rra
-  rra
-  ld c,#00
-  nop
-  djnz #7EDB
-  ld a,h
-  ld a,h
-  cp #FE
-  djnz L7EA9
-L7EA9:
-  ld a,h
-  ld b,d
-L7EAB:
-  ld b,d
-  ld a,h
-  ld b,h
-  ld b,d
-  nop
-  nop
-  ld a,(hl)
-  ld b,b
-  ld a,h
-  ld b,b
-  ld b,b
-  ld a,(hl)
-  nop
-  nop
-  inc a
-  ld b,d
-  ld b,d
-  ld a,(hl)
-  ld b,d
-  ld b,d
-  nop
-  nop
-  ld a,b
-  ld b,h
-L7EC3:
-  ld b,d
-  ld b,d
-  ld b,h
-  ld a,b
-  nop
-L7EC8:
-  nop
-  add a,d
-  ld b,h
-L7ECB:
-  jr z,L7EDD
-  djnz L7EDF
-  nop
-  nop
-  ld a,(hl)
-  ld b,d
-  ld a,(hl)
-  djnz L7EEE
-  djnz #7EF4
-  ex af,af'
-  ex af,af'
-  djnz L7F04
-  ld b,h
-L7EDD:
-  xor #44
-L7EDF:
-  nop
-  djnz L7F36
-  xor d
-  sub #AA
-  sub #6C
-  jr c,#7EEA
-  ld a,(#FE7C)
-  cp #FE
-L7EEE:
-  ld a,h
-  jr c,L7F01
-  djnz L7F6F
-  cp #FE
-  cp #7C
-  jr c,L7EF9
-L7EF9:
-  nop
-  jr c,L7F78
-  cp #7C
-  jr c,L7F00
-L7F00:
-  nop
-L7F01:
-  rst #38
-  rst #38
-  nop
-L7F04:
-  nop
-  rst #38
-  rst #38
-  nop
-  ld h,(hl)
-  ld h,(hl)
-  ld h,(hl)
-  ld h,(hl)
-  ld h,(hl)
-  ld h,(hl)
-  ld h,(hl)
-  ld h,(hl)
-  nop
-  rra
-  ccf
-  ld (hl),b
-  ld h,b
-  ld h,e
-  ld h,a
-  ld h,(hl)
-  nop
-  ret m
-  call m,#060E
-  add a,#E6
-  ld h,(hl)
-  ld h,(hl)
-  ld h,a
-  ld h,e
-  ld h,b
-  ld (hl),b
-  ccf
-  rra
-  nop
-  ld h,(hl)
-  and #C6
-  ld b,#0E
-  call m,#00F8
-  nop
-  ccf
-  ld a,a
-  ld h,b
-  ld h,b
-  ld a,a
-L7F36:
-  ccf
-  nop
-  nop
-  call m,#06FE
-  ld b,#FE
-  call m,START
-  inc a
-  ld a,(hl)
-  ld h,(hl)
-  ld h,(hl)
-  ld h,(hl)
-  ld h,(hl)
-  ld h,(hl)
-  ld h,(hl)
-  ld h,(hl)
-  ld h,(hl)
-  ld h,(hl)
-  ld h,(hl)
-  ld a,(hl)
-  inc a
-  nop
-  ld h,(hl)
-  rst #20
-  rst #20
-  nop
-  nop
-  rst #38
-  rst #38
-  nop
-  nop
-  rst #38
-  rst #38
-  nop
-  nop
-  rst #20
-  rst #20
-  ld h,(hl)
-  ld h,(hl)
-  ld h,a
-  ld h,a
-  ld h,b
-  ld h,b
-  ld h,a
-  ld h,a
-  ld h,(hl)
-  ld h,(hl)
-  and #E6
-  ld b,#06
-  and #E6
-L7F6F:
-  ld h,(hl)
-  inc a
-  cp #3F
-  rrca
-  rrca
-  ccf
-  cp #3C
-L7F78:
-  inc a
-  ld a,(hl)
-  rst #38
-  rst #38
-  rst #20
-  rst #20
-  ld b,d
-  ld b,d
-  ld b,d
-  ld b,d
-  rst #20
-  rst #20
-  rst #38
-  rst #38
-  ld a,(hl)
-  inc a
-  inc a
-  ld a,a
-  call m,#F0F0
-  call m,#3C7F
-  inc a
-  ld a,(hl)
-  rst #38
-  rst #38
-  rrca
-  rst #38
-  ld a,(hl)
-  inc a
-  inc a
-  ld a,(hl)
-  rst #38
-  rst #38
-  rst #28
-  rst #28
-  ld l,(hl)
-  inc l
-  inc (hl)
-  halt
-  rst #30
-  rst #30
-  rst #38
-  rst #38
-  ld a,(hl)
-  inc a
-  inc a
-  ld a,(hl)
-  rst #38
-  rst #38
-  ret p
-  rst #38
-  ld a,(hl)
-  inc a
-  inc a
-  ld a,(hl)
-  ret
-  ret
-  rst #38
-  in a,(#49)
-  ld c,c
-  inc a
-  ld a,(hl)
-  sub e
-  sub e
-  rst #38
-  in a,(#92)
-  sub d
-  nop
-  ld b,d
-  rst #20
-  rst #20
-  rst #38
-  rst #38
-  ld a,(hl)
-  inc a
-  nop
-  nop
-  add a,c
-  jp #FFFF
-  ld a,(hl)
-  inc a
-  nop
-  nop
-  nop
-  nop
-  rst #38
-  rst #38
-  ld a,(hl)
-  inc a
-  nop
-  nop
-  nop
-  nop
-  jr #7FDD
-  ld a,(hl)
-  inc a
-  nop
-  nop
-  nop
-  nop
-  jr #8022
-  ld a,(hl)
-  inc a
-  nop
-  nop
-  nop
-  nop
-  nop
-  jr #802B
-  inc a
-  nop
-  nop
-  nop
-  nop
-  nop
-  nop
-  jr #8010
-  add a,c
-  ld b,d
-  inc h
-  nop
-  nop
-  inc h
-  ld b,d
-  add a,c
+
+
+; Character set bitmaps
+  .org #7D00
+; Space
+  .defg ........
+  .defg ........
+  .defg ........
+  .defg ........
+  .defg ........
+  .defg ........
+  .defg ........
+  .defg ........
+; !
+  .defg ........
+  .defg ...X....
+  .defg ...X....
+  .defg ...X....
+  .defg ...X....
+  .defg ........
+  .defg ...X....
+  .defg ........
+; Small 1
+  .defg ........
+  .defg .....X..
+  .defg .....X..
+  .defg .....X..
+  .defg .....X..
+  .defg .....X..
+  .defg .....X..
+  .defg ........
+; Small 3
+  .defg ........
+  .defg ..XXXX..
+  .defg .....X..
+  .defg ..XXXX..
+  .defg .....X..
+  .defg .....X..
+  .defg ..XXXX..
+  .defg ........
+; Small 5
+  .defg ........
+  .defg ..XXXX..
+  .defg ..X.....
+  .defg ..XXXX..
+  .defg .....X..
+  .defg .....X..
+  .defg ..XXXX..
+  .defg ........
+; Pacman left
+  .defg ..XXXX..
+  .defg .XXXXXX.
+  .defg XXXXXXXX
+  .defg XXXXXXXX
+  .defg ....XXXX
+  .defg XXXXXXXX
+  .defg .XXXXXX.
+  .defg ..XXXX..
+; Pacman down
+  .defg ..XXXX..
+  .defg .XXXXXX.
+  .defg XXXXXXXX
+  .defg XXXXXXXX
+  .defg XXX.XXXX
+  .defg XXX.XXXX
+  .defg .XX.XXX.
+  .defg ..X.XX..
+; Pacman up  
+  .defg ..XX.X..
+  .defg .XXX.XX.
+  .defg XXXX.XXX
+  .defg XXXX.XXX
+  .defg XXXXXXXX
+  .defg XXXXXXXX
+  .defg .XXXXXX.
+  .defg ..XXXX..
+; Pacman right
+  .defg ..XXXX..
+  .defg .XXXXXX.
+  .defg XXXXXXXX
+  .defg XXXXXXXX
+  .defg XXXX....
+  .defg XXXXXXXX
+  .defg .XXXXXX.
+  .defg ..XXXX..
+; Ghost
+  .defg ..XXXX..
+  .defg .XXXXXX.
+  .defg X..X..XX
+  .defg X..X..XX
+  .defg XXXXXXXX
+  .defg XX.XX.XX
+  .defg X..X..X.
+  .defg X..X..X.
+; Horizontal line
+  .defg ........
+  .defg ........
+  .defg ........
+  .defg XXXXXXXX
+  .defg XXXXXXXX
+  .defg ........
+  .defg ........
+  .defg ........
+ ; Balls
+  .defg ........
+  .defg ........
+  .defg XXX..XXX
+  .defg X.X..X.X
+  .defg XXX..XXX
+  .defg ........
+  .defg ........
+  .defg ........
+ ; Cherry 
+  .defg ....X...
+  .defg ....X...
+  .defg ...X....
+  .defg ..X.X...
+  .defg .X...X..
+  .defg XXX.XXX.
+  .defg .X...X..
+  .defg ........
+; 20  
+  .defg ........
+  .defg XXX.XXX.
+  .defg ..X.X.X.
+  .defg XXX.X.X.
+  .defg X...X.X.
+  .defg X...X.X.
+  .defg XXX.XXX.
+  .defg ........
+; 30
+  .defg ........
+  .defg XXX.XXX.
+  .defg ..X.X.X.
+  .defg XXX.X.X.
+  .defg ..X.X.X.
+  .defg ..X.X.X.
+  .defg XXX.XXX.
+  .defg ........
+; 50
+  .defg ........
+  .defg XXX.XXX.
+  .defg X...X.X.
+  .defg XXX.X.X.
+  .defg ..X.X.X.
+  .defg ..X.X.X.
+  .defg XXX.XXX.
+  .defg ........
+; 0
+  .defg ........
+  .defg ..XXXX..
+  .defg .X...XX.
+  .defg .X..X.X.
+  .defg .X.X..X.
+  .defg .XX...X.
+  .defg ..XXXX..
+  .defg ........
+; 1  
+  .defg ........
+  .defg ...XX...
+  .defg ..X.X...
+  .defg ....X...
+  .defg ....X...
+  .defg ....X...
+  .defg ..XXXXX.
+  .defg ........
+; 2
+  .defg ........
+  .defg ..XXXX..
+  .defg .X....X.
+  .defg ......X.
+  .defg ..XXXX..
+  .defg .X......
+  .defg .XXXXXX.
+  .defg ........
+; 3
+  .defg ........
+  .defg ..XXXX..
+  .defg .X....X.
+  .defg ....XX..
+  .defg ......X.
+  .defg .X....X.
+  .defg ..XXXX..
+  .defg ........
+; 4
+  .defg ........
+  .defg ....X...
+  .defg ...XX...
+  .defg ..X.X...
+  .defg .X..X...
+  .defg .XXXXXX.
+  .defg ....X...
+  .defg ........
+; 5
+  .defg ........
+  .defg .XXXXXX.
+  .defg .X......
+  .defg .XXXXX..
+  .defg ......X.
+  .defg .X....X.
+  .defg ..XXXX..
+  .defg ........
+; 6
+  .defg ........
+  .defg ..XXXX..
+  .defg .X......
+  .defg .XXXXX..
+  .defg .X....X.
+  .defg .X....X.
+  .defg ..XXXX..
+  .defg ........
+; 7
+  .defg ........
+  .defg .XXXXXX.
+  .defg ......X.
+  .defg .....X..
+  .defg ....X...
+  .defg ...X....
+  .defg ...X....
+  .defg ........
+; 8
+  .defg ........
+  .defg ..XXXX..
+  .defg .X....X.
+  .defg ..XXXX..
+  .defg .X....X.
+  .defg .X....X.
+  .defg ..XXXX..
+  .defg ........
+; 9
+  .defg ........
+  .defg ..XXXX..
+  .defg .X....X.
+  .defg .X....X.
+  .defg ..XXXXX.
+  .defg ......X.
+  .defg ..XXXX..
+  .defg ........
+; Small 2  
+  .defg ........
+  .defg ..XXXX..
+  .defg ..X..X..
+  .defg .....X..
+  .defg ..XXXX..
+  .defg ..X.....
+  .defg ..XXXX..
+  .defg ........
+; Small 4
+  .defg ........
+  .defg ..X.....
+  .defg ..X.X...
+  .defg ..X.X...
+  .defg ..XXXX..
+  .defg ....X...
+  .defg ....X...
+  .defg ........
+; Small 8
+  .defg ........
+  .defg ..XXXX..
+  .defg ..X..X..
+  .defg ..XXXX..
+  .defg ..X..X..
+  .defg ..X..X..
+  .defg ..XXXX..
+  .defg ........
+; Small 16
+  .defg ........
+  .defg .X.XXXX.
+  .defg .X.X....
+  .defg .X.XXXX.
+  .defg .X.X..X.
+  .defg .X.X..X.
+  .defg .X.XXXX.
+  .defg ........
+; Small 00
+  .defg ........
+  .defg XXX..XXX
+  .defg X.X..X.X
+  .defg X.X..X.X
+  .defg X.X..X.X
+  .defg X.X..X.X
+  .defg XXX..XXX
+  .defg ........
+; Arc top-left
+  .defg .....XXX
+  .defg ...XXXXX
+  .defg ..XXXXXX
+  .defg .XXXXXXX
+  .defg .XXXXXXX
+  .defg XXXXXXXX
+  .defg XXXXXXXX
+  .defg XXXXXXXX
+; Arc top-right
+  .defg XXX.....
+  .defg XXXXX...
+  .defg XXXXXX..
+  .defg XXXXXXX.
+  .defg XXXXXXX.
+  .defg XXXXXXXX
+  .defg XXXXXXXX
+  .defg XXXXXXXX
+; Arc bottom-left
+  .defg XXXXXX..
+  .defg XXXXXX..
+  .defg XXXXXXXX
+  .defg .XXXXXXX
+  .defg .XXXXXXX
+  .defg ..XXXXXX
+  .defg ...XXXXX
+  .defg .....XXX
+; Arc bottom-right
+  .defg ........
+  .defg ........
+  .defg XXXXXXXX
+  .defg XXXXXXX.
+  .defg XXXXXXX.
+  .defg XXXXXX..
+  .defg XXXXX...
+  .defg XXX.....
+;
+  .defg .....XXX
+  .defg ...XXXXX
+  .defg ..XXXXXX
+  .defg .XXXXXXX
+  .defg .XXXXXXX
+  .defg XXXXXXXX
+  .defg XXXXXXXX
+  .defg XXXXXXXX
+;
+  .defg XXX.....
+  .defg XXXXX...
+  .defg XXXXXX..
+  .defg XXXXXXX.
+  .defg XXXXXXX.
+  .defg XXXXXXXX
+  .defg XXXXXXXX
+  .defg XXXXXXXX
+;
+  .defg XXXXXX..
+  .defg XXXXXX..
+  .defg XXXXXXXX
+  .defg .XXXXXXX
+  .defg .XXXXXXX
+  .defg ..XXXXXX
+  .defg ...XXXXX
+  .defg .....XXX
+;
+  .defg ........
+  .defg ........
+  .defg XXXXXXXX
+  .defg XXXXXXX.
+  .defg XXXXXXX.
+  .defg XXXXXX..
+  .defg XXXXX...
+  .defg XXX.....
+;
+  .defg .....XXX
+  .defg ...XXXXX
+  .defg ..XXXXXX
+  .defg .XXXXXXX
+  .defg .XXXXXXX
+  .defg XXXXXXXX
+  .defg XXXXXXXX
+  .defg XXXXXX..
+;
+  .defg XXX.....
+  .defg XXXXX...
+  .defg XXXXXXX.
+  .defg XXXXXX..
+  .defg XXXX....
+  .defg XX......
+  .defg ........
+  .defg ........
+;
+  .defg XXXXXX..
+  .defg XXXXXXXX
+  .defg XXXXXXXX
+  .defg .XXXXXXX
+  .defg .XXXXXXX
+  .defg ..XXXXXX
+  .defg ...XXXXX
+  .defg .....XXX
+;
+  .defg ........
+  .defg ........
+  .defg XX......
+  .defg XXXX....
+  .defg XXXXXX..
+  .defg XXXXXXX.
+  .defg XXXXX...
+  .defg XXX.....
+;
+  .defg ........
+  .defg ........
+  .defg ........
+  .defg ...XX...
+  .defg ...XX...
+  .defg ........
+  .defg ........
+  .defg ........
+;
+  .defg ..XXXX..
+  .defg ..XXXX..
+  .defg XXXXXXXX
+  .defg XXXXXXXX
+  .defg XXXXXXXX
+  .defg XXXXXXXX
+  .defg ..XXXX..
+  .defg ..XXXX..
+;
+  .defg ........
+  .defg ..XXXX..
+  .defg .....X..
+  .defg .....X..
+  .defg .....X..
+  .defg .....X..
+  .defg .....X..
+  .defg ........
+;
+  .defg ........
+  .defg .X.XXX..
+  .defg .X.X.X..
+  .defg .X.X.X..
+  .defg .X.X.X..
+  .defg .X.X.X..
+  .defg .X.XXX..
+  .defg ........
+;
+  .defg ........
+  .defg ...X....
+  .defg ..XX....
+  .defg .XXXXXX.
+  .defg XXXXXXX.
+  .defg .XXXXXX.
+  .defg ..XX....
+  .defg ...X....
+;
+  .defg ........
+  .defg ...X....
+  .defg ...XX...
+  .defg XXXXXX..
+  .defg XXXXXXX.
+  .defg XXXXXX..
+  .defg ...XX...
+  .defg ...X....
+;
+  .defg ........
+  .defg ...X....
+  .defg ..XXX...
+  .defg .XXXXX..
+  .defg XXXXXXX.
+  .defg ..XXX...
+  .defg ..XXX...
+  .defg ..XXX...
+;
+  .defg ........
+  .defg ..XXX...
+  .defg ..XXX...
+  .defg ..XXX...
+  .defg XXXXXXX.
+  .defg .XXXXX..
+  .defg ..XXX...
+  .defg ...X....
+;
+  .defg ........
+  .defg ........
+  .defg XXXX.XX.
+  .defg ...XXXXX
+  .defg ...XXXXX
+  .defg ...XXXXX
+  .defg ....XXX.
+  .defg ........
+;
+  .defg ........
+  .defg ...X....
+  .defg ..XXX...
+  .defg .XXXXX..
+  .defg .XXXXX..
+  .defg XXXXXXX.
+  .defg XXXXXXX.
+  .defg ...X....
+;
+  .defg ........
+  .defg .XXXXX..
+  .defg .X....X.
+  .defg .X....X.
+  .defg .XXXXX..
+  .defg .X...X..
+  .defg .X....X.
+  .defg ........
+;
+  .defg ........
+  .defg .XXXXXX.
+  .defg .X......
+  .defg .XXXXX..
+  .defg .X......
+  .defg .X......
+  .defg .XXXXXX.
+  .defg ........
+;
+  .defg ........
+  .defg ..XXXX..
+  .defg .X....X.
+  .defg .X....X.
+  .defg .XXXXXX.
+  .defg .X....X.
+  .defg .X....X.
+  .defg ........
+;
+  .defg ........
+  .defg .XXXX...
+  .defg .X...X..
+  .defg .X....X.
+  .defg .X....X.
+  .defg .X...X..
+  .defg .XXXX...
+  .defg ........
+;
+  .defg ........
+  .defg X.....X.
+  .defg .X...X..
+  .defg ..X.X...
+  .defg ...X....
+  .defg ...X....
+  .defg ...X....
+  .defg ........
+;
+  .defg ........
+  .defg .XXXXXX.
+  .defg .X....X.
+  .defg .XXXXXX.
+  .defg ...X....
+  .defg ...XX...
+  .defg ...X....
+  .defg ...XXX..
+;
+  .defg ....X...
+  .defg ....X...
+  .defg ...X....
+  .defg ..X.X...
+  .defg .X...X..
+  .defg XXX.XXX.
+  .defg .X...X..
+  .defg ........
+;
+  .defg ...X....
+  .defg .X.X.X..
+  .defg X.X.X.X.
+  .defg XX.X.XX.
+  .defg X.X.X.X.
+  .defg XX.X.XX.
+  .defg .XX.XX..
+  .defg ..XXX...
+;
+  .defg .......X
+  .defg ..XXX.X.
+  .defg .XXXXX..
+  .defg XXXXXXX.
+  .defg XXXXXXX.
+  .defg XXXXXXX.
+  .defg .XXXXX..
+  .defg ..XXX...
+;
+  .defg ...X....
+  .defg ...X....
+  .defg .XXXXX..
+  .defg XXXXXXX.
+  .defg XXXXXXX.
+  .defg XXXXXXX.
+  .defg .XXXXX..
+  .defg ..XXX...
+;
+  .defg ........
+  .defg ........
+  .defg ..XXX...
+  .defg .XXXXX..
+  .defg XXXXXXX.
+  .defg .XXXXX..
+  .defg ..XXX...
+  .defg ........
+;
+  .defg ........
+  .defg XXXXXXXX
+  .defg XXXXXXXX
+  .defg ........
+  .defg ........
+  .defg XXXXXXXX
+  .defg XXXXXXXX
+  .defg ........
+;
+  .defg .XX..XX.
+  .defg .XX..XX.
+  .defg .XX..XX.
+  .defg .XX..XX.
+  .defg .XX..XX.
+  .defg .XX..XX.
+  .defg .XX..XX.
+  .defg .XX..XX.
+;
+  .defg ........
+  .defg ...XXXXX
+  .defg ..XXXXXX
+  .defg .XXX....
+  .defg .XX.....
+  .defg .XX...XX
+  .defg .XX..XXX
+  .defg .XX..XX.
+;
+  .defg ........
+  .defg XXXXX...
+  .defg XXXXXX..
+  .defg ....XXX.
+  .defg .....XX.
+  .defg XX...XX.
+  .defg XXX..XX.
+  .defg .XX..XX.
+;
+  .defg .XX..XX.
+  .defg .XX..XXX
+  .defg .XX...XX
+  .defg .XX.....
+  .defg .XXX....
+  .defg ..XXXXXX
+  .defg ...XXXXX
+  .defg ........
+;
+  .defg .XX..XX.
+  .defg XXX..XX.
+  .defg XX...XX.
+  .defg .....XX.
+  .defg ....XXX.
+  .defg XXXXXX..
+  .defg XXXXX...
+  .defg ........
+;
+  .defg ........
+  .defg ..XXXXXX
+  .defg .XXXXXXX
+  .defg .XX.....
+  .defg .XX.....
+  .defg .XXXXXXX
+  .defg ..XXXXXX
+  .defg ........
+;
+  .defg ........
+  .defg XXXXXX..
+  .defg XXXXXXX.
+  .defg .....XX.
+  .defg .....XX.
+  .defg XXXXXXX.
+  .defg XXXXXX..
+  .defg ........
+  .defg ........
+  .defg ..XXXX..
+  .defg .XXXXXX.
+  .defg .XX..XX.
+  .defg .XX..XX.
+  .defg .XX..XX.
+  .defg .XX..XX.
+  .defg .XX..XX.
+  .defg .XX..XX.
+  .defg .XX..XX.
+  .defg .XX..XX.
+  .defg .XX..XX.
+  .defg .XX..XX.
+  .defg .XXXXXX.
+  .defg ..XXXX..
+  .defg ........
+  .defg .XX..XX.
+  .defg XXX..XXX
+  .defg XXX..XXX
+  .defg ........
+  .defg ........
+  .defg XXXXXXXX
+  .defg XXXXXXXX
+  .defg ........
+  .defg ........
+  .defg XXXXXXXX
+  .defg XXXXXXXX
+  .defg ........
+  .defg ........
+  .defg XXX..XXX
+  .defg XXX..XXX
+  .defg .XX..XX.
+  .defg .XX..XX.
+  .defg .XX..XXX
+  .defg .XX..XXX
+  .defg .XX.....
+  .defg .XX.....
+  .defg .XX..XXX
+  .defg .XX..XXX
+  .defg .XX..XX.
+  .defg .XX..XX.
+  .defg XXX..XX.
+  .defg XXX..XX.
+  .defg .....XX.
+  .defg .....XX.
+  .defg XXX..XX.
+  .defg XXX..XX.
+  .defg .XX..XX.
+  .defg ..XXXX..
+  .defg XXXXXXX.
+  .defg ..XXXXXX
+  .defg ....XXXX
+  .defg ....XXXX
+  .defg ..XXXXXX
+  .defg XXXXXXX.
+  .defg ..XXXX..
+  .defg ..XXXX..
+  .defg .XXXXXX.
+  .defg XXXXXXXX
+  .defg XXXXXXXX
+  .defg XXX..XXX
+  .defg XXX..XXX
+  .defg .X....X.
+  .defg .X....X.
+  .defg .X....X.
+  .defg .X....X.
+  .defg XXX..XXX
+  .defg XXX..XXX
+  .defg XXXXXXXX
+  .defg XXXXXXXX
+  .defg .XXXXXX.
+  .defg ..XXXX..
+  .defg ..XXXX..
+  .defg .XXXXXXX
+  .defg XXXXXX..
+  .defg XXXX....
+  .defg XXXX....
+  .defg XXXXXX..
+  .defg .XXXXXXX
+  .defg ..XXXX..
+  .defg ..XXXX..
+  .defg .XXXXXX.
+  .defg XXXXXXXX
+  .defg XXXXXXXX
+  .defg ....XXXX
+  .defg XXXXXXXX
+  .defg .XXXXXX.
+  .defg ..XXXX..
+  .defg ..XXXX..
+  .defg .XXXXXX.
+  .defg XXXXXXXX
+  .defg XXXXXXXX
+  .defg XXX.XXXX
+  .defg XXX.XXXX
+  .defg .XX.XXX.
+  .defg ..X.XX..
+  .defg ..XX.X..
+  .defg .XXX.XX.
+  .defg XXXX.XXX
+  .defg XXXX.XXX
+  .defg XXXXXXXX
+  .defg XXXXXXXX
+  .defg .XXXXXX.
+  .defg ..XXXX..
+  .defg ..XXXX..
+  .defg .XXXXXX.
+  .defg XXXXXXXX
+  .defg XXXXXXXX
+  .defg XXXX....
+  .defg XXXXXXXX
+  .defg .XXXXXX.
+  .defg ..XXXX..
+  .defg ..XXXX..
+  .defg .XXXXXX.
+  .defg XX..X..X
+  .defg XX..X..X
+  .defg XXXXXXXX
+  .defg XX.XX.XX
+  .defg .X..X..X
+  .defg .X..X..X
+  .defg ..XXXX..
+  .defg .XXXXXX.
+  .defg X..X..XX
+  .defg X..X..XX
+  .defg XXXXXXXX
+  .defg XX.XX.XX
+  .defg X..X..X.
+  .defg X..X..X.
+  .defg ........
+  .defg .X....X.
+  .defg XXX..XXX
+  .defg XXX..XXX
+  .defg XXXXXXXX
+  .defg XXXXXXXX
+  .defg .XXXXXX.
+  .defg ..XXXX..
+  .defg ........
+  .defg ........
+  .defg X......X
+  .defg XX....XX
+  .defg XXXXXXXX
+  .defg XXXXXXXX
+  .defg .XXXXXX.
+  .defg ..XXXX..
+  .defg ........
+  .defg ........
+  .defg ........
+  .defg ........
+  .defg XXXXXXXX
+  .defg XXXXXXXX
+  .defg .XXXXXX.
+  .defg ..XXXX..
+  .defg ........
+  .defg ........
+  .defg ........
+  .defg ........
+  .defg ...XX...
+  .defg XXXXXXXX
+  .defg .XXXXXX.
+  .defg ..XXXX..
+  .defg ........
+  .defg ........
+  .defg ........
+  .defg ........
+  .defg ...XX...
+  .defg ..XXXX..
+  .defg .XXXXXX.
+  .defg ..XXXX..
+  .defg ........
+  .defg ........
+  .defg ........
+  .defg ........
+  .defg ........
+  .defg ...XX...
+  .defg ..XXXX..
+  .defg ..XXXX..
+  .defg ........
+  .defg ........
+  .defg ........
+  .defg ........
+  .defg ........
+  .defg ........
+  .defg ...XX...
+  .defg ...XX...
+  .defg X......X
+  .defg .X....X.
+  .defg ..X..X..
+  .defg ........
+  .defg ........
+  .defg ..X..X..
+  .defg .X....X.
+  .defg X......X

@@ -14,9 +14,21 @@
       },
       {
         "StartAddress": 6912,
+        "EndAddress": 15615,
+        "SectionType": 1,
+        "Lenght": 8704
+      },
+      {
+        "StartAddress": 15616,
+        "EndAddress": 16383,
+        "SectionType": 5,
+        "Lenght": 768
+      },
+      {
+        "StartAddress": 16384,
         "EndAddress": 49150,
         "SectionType": 1,
-        "Lenght": 42239
+        "Lenght": 32767
       }
     ],
     "DisassemblyFlags": 0
