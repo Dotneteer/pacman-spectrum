@@ -1,3 +1,5 @@
+  .org #5B00
+
 ; External symbols
 BEEPER:
   .equ #03B5
@@ -13,270 +15,192 @@ OUT_SP_NO:
   .equ #192A
 PR_STRING:
   .equ #203C
-START:
-  .equ #0000
 
-; System variables
-DF_SZ: 
-  .equ #5C6B ; The number of lines (including one blank line) in the lower part of the screen.
-FRAMES:
-  .equ #5C78 ; 3 byte (least significant first), frame counter. Incremented every 20ms.
-CHARS:
-  .equ #5C36 ; 256 less than address of character set (which starts with space and carries 
-             ; on to the copyright symbol). Normally in ROM, but you can set up your own in 
-			 ; RAM and make CHARS point to it.
-LAST_K:
-  .equ #5C08 ; Stores newly pressed key
-
-; The code starts at the beginning of the print buffer area (#5B00)
-  .org #5B00
-
-; Checks if the point in a Hi-Score table entry is greater than
-; a particular point
-; IN:
-;   IX: High score entry address
-;   DE: Point to check
-; OUT:
-;   Carry is set if the point is greater than the entry point
-CheckHsEntry:
-  ld l,(ix+#03)    ; Get the point value from the Hi-Score entry
+L5B00:
+  ld l,(ix+#03)
   ld h,(ix+#04)
-  and a            ; Reset Carry
-  sbc hl,de        ; Do the test
-  ret              ; Return with carry set, if point greater than 
-                   ; the current entry
-
-; Waits while no key is pressed
-WaitForNoKey:
-  push bc       ; Save regs
+  and a
+  sbc hl,de
+  ret
+L5B0A:
+  push bc
   push hl
-`loop:
-  call KEY_SCAN ; Scan the keyboard
+L5B0C:
+  call KEY_SCAN
   ld a,#FF
-  cp e          ; E = #FF? 
-  jr z,`nokey   ; Yes, no key is pressed
-  jr `loop      
-`nokey:
-  xor a         ; Store 0
-  ld (#6816),a  ; to ...
-  pop hl        ; Restore regs
-  pop bc        
-  ret           ; Finished
-
-; TODO
+  cp e
+  jr z,L5B16
+  jr L5B0C
+L5B16:
+  xor a
+  ld (#6816),a
+  pop hl
+  pop bc
+  ret
 L5B1D:
-  call DelayForB
-  ld a,(ControlMode)
-  cp #00        ; Controlled from keyboard?
-  jp z,L6185    ; No, jump to Kempston joystick
-  jp L6196      ; Yes, jump tot Keyboard
+  call L5BF1
+  ld a,(#67EE)
+  cp #00
+  jp z,L6185
+  jp L6196
   nop
   nop
-
-; This subroutine checks if the current game point fits in the Hi-Score
-; table. If it is so, it asks for the player name and stores the new
-; score in the appropriate Hi-Score entry.
-EnterHiScore:
-  ld hl,(CurrentScore)
-  ex de,hl             ; DE = game score
-  ld bc,#0014          ; The last entry index offset in Hi-Score table
-  ld ix,HiScoreTable   
-  call CheckHsEntry    ; Current point is greater than the top entry
-                       ; in the Hi-Score table?
-  jr c,`newHiScore    ; Jump if there's a new Top Score
-
-; Test the next Hi-Score table entry
-`nextHsEntry:
-  push bc              ; Save Hi-Score table offset
-  ld bc,#0005          ; BC = Lenght of Hi-Score table entry
-  add ix,bc            ; IX points to next entry
-  pop hl               ; HL = last entry offset
-  and a                ; Reset carry
-  sbc hl,bc            
-  ret c                ; Return if the entire Hi-Score table checked
+L5B2D:
+  ld hl,(#6819)
+  ex de,hl
+  ld bc,#0014
+  ld ix,#5C97
+  call L5B00
+  jr c,L5B51
+L5B3D:
+  push bc
+  ld bc,#0005
+  add ix,bc
+  pop hl
+  and a
+  sbc hl,bc
+  ret c
   push hl
-  pop bc               ; BC = subsequent Hi-Score offset
-  call CheckHsEntry    
-  jr c,`newHiScore     ; We found the Hi-Score entry shift down
-  jr `nextHsEntry      ; Move to next entry
-
-`newHiScore:
+  pop bc
+  call L5B00
+  jr c,L5B51
+  jr L5B3D
+L5B51:
   ld hl,#0000
   and a
-  sbc hl,bc            ; Is BC 0?
-  push de              ; Save the current score
+  sbc hl,bc
+  push de
   push ix
-  pop hl               ; HL points to the Hi-Score entry to enter
-  push hl              ; Save the Hi-Score entry pointer
-  jr z,`enterName      ; BC is zero, so no entries to move
-  ld hl,HiScoreTable + 19 ; Last byte of entry 4 in H-Score table
-  ld de,HiScoreTable + 24 ; Last byte of Hi-Score table
-  lddr                    ; Shift down the Hi-Score table
-
-; The player reached a Hi-Scrore
-; At this point the stack stores the address of the Hi-Score entry
-; and the score to store to that entry
-`enterName:
-  call ClearScreen
+  pop hl
+  push hl
+  jr z,L5B66
+  ld hl,#5CAA
+  ld de,#5CAF
+  lddr
+L5B66:
+  call L7C65
   ld bc,#0808
-  call PrintAt         ; AT 8, 8
-  ld hl,CONGRATS_MSG
-  ld b,#10             
-  call PrintMsg        ; Print Congrats
+  call L689B
+  ld hl,#60EE
+  ld b,#10
+  call L6168
   ld bc,#0A00
-  call PrintAt         ; AT 10, 0
-  ld hl,YOURSCORE_MSG
+  call L689B
+  ld hl,#60FE
   ld b,#58
-  call PrintMsg        ; Print Hi-Score message
+  call L6168
   ld bc,#100E
-  push bc              ; Save position
-  call PrintAt         ; AT 16, 14
-  ld b,#03             ; Print 3...
-`loop:         
+  push bc
+  call L689B
+  ld b,#03
+L5B8E:
   ld a,#3F
-  rst #10              ; '?' characters
-  djnz `loop
-  pop bc               ; Restore position
-  call PrintAt         ; AT 16, 14
-  ld a,#41             ; A = 'A'
+  rst #10
+  djnz L5B8E
+  pop bc
+  call L689B
+  ld a,#41
   push af
-  rst #10              ; Print 'A'
+  rst #10
   pop af
-`nextNameChar:
+L5B9C:
   push bc
   push af
-  call KEY_SCAN        ; Scan the keyboard
+  call KEY_SCAN
   ld a,#04
-  cp e                 ; Is arrow left pressed?
+  cp e
   pop hl
-  jr nz,`checkRight    ; No, check other keys
-
-; Arrow left key pressed
-  ld a,h              
-  dec a                ; Decrement letter code
-  cp #40               ; Reached '@'?
-  jr nz,`storePrev
-  ld a,#5A             ; Set letter to 'Z'
-`storePrev:
-  ld h,a               ; Save the current letter in H
-`checkRight:
-  ld a,#13
-  cp e                 ; Is arrow right pressed?
+  jr nz,L5BB0
   ld a,h
-  jr nz,`storeNext
-
-; Arrow right pressed
-  inc a                ; Increment letter code 
-  cp #5B               ; Reached '['?
-  jr nz,`storeNext
-  ld a,#41             ; Set letter to 'A'
-`storeNext:
-  ld h,a               ; Save the current letter in H
+  dec a
+  cp #40
+  jr nz,L5BAF
+  ld a,#5A
+L5BAF:
+  ld h,a
+L5BB0:
+  ld a,#13
+  cp e
+  ld a,h
+  jr nz,L5BBD
+  inc a
+  cp #5B
+  jr nz,L5BBD
+  ld a,#41
+L5BBD:
+  ld h,a
   pop bc
   push de
   push hl
-  call PrintAt         ; Set the current position
+  call L689B
   pop hl
   pop de
   ld a,h
-  rst #10              ; Print the current letter
-  call DelayForB       ; Wait
-  ld a,(#6816)         ; TODO
+  rst #10
+  call L5BF1
+  ld a,(#6816)
   bit 7,a
-  call nz,WaitForNoKey ; Wait until the key is released
+  call nz,L5B0A
   ld a,#21
-  cp e                 ; Is 'ENTER' pressed?
+  cp e
   ld a,h
-  jr nz,`nextNameChar  ; No, back to check
-  pop hl               ; HL points to the location in the Hi-Score table
-  ld (hl),a            ; Store the specified letter
-  inc hl               ; Increment name pointer
-  push hl              ; Save name pointer
-  xor a   
-  set 7,a              ; A = #80 (Bit 7 set)
-  ld (#6816),a         ; Store the state flag
-  inc c                ; Increment column position
-  ld a,#11           
-  cp c                 ; Column 17 reached?
-  ld a,#41             ; A = 'A'
-  jr nz,`nextNameChar  ; There are still name letters to collect
-
-; Now it's time to store the score value
-  pop hl               ; restore Hi-Score pointer
-  pop de               ; Restore game point
+  jr nz,L5B9C
+  pop hl
+  ld (hl),a
+  inc hl
+  push hl
+  xor a
+  set 7,a
+  ld (#6816),a
+  inc c
+  ld a,#11
+  cp c
+  ld a,#41
+  jr nz,L5B9C
+  pop hl
+  pop de
   ld (hl),e
   inc hl
-  ld (hl),d            ; Store game point to Hi-Score table
-  ret                  ; Finished
-
-; Waits for B*0.16 seconds
-DelayForB: // $5BF1
+  ld (hl),d
+  ret
+L5BF1:
   push bc
   ld b,#40
-`loop1:
-  push bc      ; 11T
-  ld b,#FF     ; 7T
-`loop2:
-  push bc      ; 11T
-  pop bc       ; 10T
-  djnz `loop2  ; 13/8T -> inner loop: 8.670T
-  pop bc       ; 10T
-  djnz `loop1  ; 13/8T
-  pop bc       ; outer loop -> 557.504T, 0.16 sec
+L5BF4:
+  push bc
+  ld b,#FF
+L5BF7:
+  push bc
+  pop bc
+  djnz L5BF7
+  pop bc
+  djnz L5BF4
+  pop bc
   ret
-
-; System variables area (#5C00-#5CB6)
 SYS_VARS:
   .defb #FF, #00, #1C, #20, #FF, #00, #1E, #0D
   .defb #0D, #23, #05, #00, #00, #06, #10, #16
- ; $5c10
   .defb #01, #00, #06, #00, #0B, #00, #01, #00
   .defb #01, #00, #06, #00, #10, #00, #00, #00
- ; $5c20
   .defb #3E, #0A, #BD, #D0, #87, #BD, #D8, #21
   .defb #59, #6C, #C1, #E5, #C9, #E8, #00, #00
- ; $5c30
   .defb #00, #00, #00, #00, #00, #00, #00, #3C
   .defb #40, #00, #FF, #CC, #01, #7E, #5D, #7E
-; $5c40
   .defb #5D, #00, #96, #1A, #FF, #FE, #FF, #01
   .defb #07, #01, #00, #CB, #5C, #CC, #5C, #B6
-; $5c50
   .defb #5C, #B6, #5C, #CB, #5C, #DA, #5C, #CA
   .defb #5C, #CC, #5C, #D3, #5C, #D9, #5C, #D9
-; $5c60
   .defb #00, #DB, #5C, #DB, #5C, #DB, #5C, #2D
   .defb #92, #5C, #18, #02, #00, #00, #FE, #FF
-; $5c70
   .defb #01, #00, #E0, #C2, #B6, #1A, #DD, #FF
   .defb #7C, #5E, #90, #58, #7E, #00, #00, #21
-; $5c80
   .defb #00, #00, #21, #17, #40, #40, #E0, #50
   .defb #21, #16, #21, #17, #03, #40, #00, #07
-; $5c90
-  .defb #00, #00, #00, #00, #00, #00, #00
-
-; Hi-Score table with 5 entries in decreasing order
-; An entry contains 3 byte for name + 2 byte for score
-HiScoreTable: // $5c97
-  .defm "YOU"
-  .defw 500
-  .defm "YOU" 
-  .defw 400
-  .defm "YOU"
-  .defw 300
-  .defm "YOU"
-  .defw 200
-  .defm "YOU"
-  .defw 100
-
-; Some data
+  .defb #00, #00, #00, #00, #00, #00, #00, #59
+  .defb #4F, #55, #F4, #01, #59, #4F, #55, #90
+  .defb #01, #59, #4F, #55, #2C, #01, #59, #4F
+  .defb #55, #C8, #00, #59, #4F, #55, #64, #00
   .defb #00, #00, #81, #5D, #FF, #FF
-
-; Microdrive area (#5C00-#5CB6)
-; Channel information
-; Basic program
-; Variables
 MICRODRV_BUFF:
   .defb #F4, #09, #A8, #10, #4B, #F4, #09, #C4
   .defb #15, #53, #81, #0F, #C4, #15, #52, #F4
@@ -309,76 +233,64 @@ MICRODRV_BUFF:
   .defb #52, #49, #47, #48, #54, #53, #20, #52
   .defb #45, #53, #45, #52, #56, #45, #44, #2E
   .defb #00, #00, #00
-
-; TODO
 L5DA9:
   pop bc
   call L7CFA
-  ld a,#3C         
-  ld (CHARS+1),a   ; Set the normal character set in ROM 
-  ld hl,GAME_OVER_MSG
+  ld a,#3C
+  ld (#5C37),a
+  ld hl,#615A
   ld b,#0E
-  call PrintMsg    ; Display "GAME OVER"
+  call L6168
   call L5DFA
   jp L7117
-
-; Scans the Kempston Joystick
 L5DC0:
-  in a,(#1F)       ; Read Kempston port
-  ld d,a           ; D = port data
+  in a,(#1F)
+  ld d,a
   bit 0,d
-  ld a,(#67F3)     ; Get direction status
-  call nz,L5DDB    ; Right pressed
+  ld a,(#67F3)
+  call nz,L5DDB
   bit 1,d
-  call nz,L5DE2    ; Left pressed;
-TestUpAndDown:
+  call nz,L5DE2
+L5DD0:
   bit 2,d
-  call nz,L5DE9    ; Down pressed;
+  call nz,L5DE9
   bit 3,d
-  call nz,L5DF0    ; Up pressed;
-  ret              ; Finished  
-
-; Right direction selected
+  call nz,L5DF0
+  ret
 L5DDB:
-  cp #28           ; Current direction is right?
-  ret z            ; Return, if so
-  ld a,#38         ; A=Right arrow key code
+  cp #28
+  ret z
+  ld a,#38
   jr L5DF5
-
-; Left direction selected;
 L5DE2:
   cp #25
   ret z
   ld a,#35
   jr L5DF5
-
-; Down direction selected
 L5DE9:
   cp #26
   ret z
   ld a,#36
   jr L5DF5
-
-; Up direction selected;
 L5DF0:
   cp #27
   ret z
   ld a,#37
 L5DF5:
-  pop bc           ; Remove the address from stack
-  ld (LAST_K),a    ; Store A as the last pressed key code
+  pop bc
+  ld (#5C08),a
   ret
 L5DFA:
   ld b,#0A
 L5DFC:
-  call DelayForB
+  call L5BF1
   djnz L5DFC
-  call ClearScreen
+  call L7C65
   ld a,#3C
-  ld (CHARS+1),a
+  ld (#5C37),a
   ld a,#46
   ld (#5C8D),a
-  call EnterHiScore
+  call L5B2D
   ld a,#40
   ld (#5C8D),a
   ret
@@ -454,7 +366,7 @@ L5E80:
   call L5E43
   call L7971
   ld bc,(#67F0)
-  call PrintAt
+  call L689B
   ld a,#20
   push af
   rst #10
@@ -498,130 +410,61 @@ L5EB0:
   ret
 L5ED8:
   ld b,#3F
-  call PrintMsg
-  jp #6032
-  
-; Data Area #5EE0-#6031
+  call L6168
+  jp L6032
   .defb #02, #BB, #5A, #30, #5F, #EE, #3D, #C8
-  .defb #00
-
-SELECT_MSG: // $5EE9
-  .defb #16, #13, #00  ; AT 19, 0
-  .defb #10, #05       ; INK CYAN
-  .defm "SELECT : 1 - KEYBOARD CONTROLS  "
-  .defb #16, #14, #09  ; AT 20, 9
-  .defb #10, #05       ; INK CYAN
-  .defm "2 - KEMPSTON JOYSTICK"
-PRESS_S_MSG: // $5F28
-  .defb #16, #16, #00  ; AT 22, 0
-  .defb #06, #06       ; PRINT ,,
-  .defb #10, #07       ; INK WHITE
-  .defm "  PRESS 'S' TO START THE GAME "
-; -- Done
-POINTS_MSG: // $5F4D
-  .defb #16, #00, #0A  ; AT 0, 10
-  .defb #10, #06       ; INK YELLOW
-  .defm "POINTS TABLE"
-  .defb #16, #02, #05  ; AT 2, 5
-  .defb #10, #03       ; INK MAGENTA
-  .defm "DOT"
-  .defb #FA            ; 10 spaces
-  .defb #10, #06       ; INK YELLOW
-  .defb #90            ; (dot symbol)
-  .defb #F6            ; 6 spaces
-  .defm "10"
-  .defb #16, #04, #05  ; AT 4, 5
-  .defb #10, #03       ; INK MAGENTA
-  .defm "POWER PILL "
-  .defb #F2            ; 2 spaces
-  .defb #10, #06       ; INK YELLOW
-  .defb #91            ; (power pill symbol)
-  .defb #10, #06       ; INK YELLOW
-  .defb #F6            ; 6 spaces
-  .defm "50"
-  .defb #16, #06, #05  ; AT 6, 5
-  .defb #10, #03       ; INK MAGENTA
-  .defm "CHERRY"       
-  .defb #F7            ; 7 spaces
-  .defb #10, #02       ; INK RED
-  .defb #A0            ; (cherry symbol)
-  .defb #10, #06       ; INK YELLOW
-  .defb #F5            ; 5 spaces
-  .defm "100"
-  .defb #16, #08, #05  ; AT 8, 5
-  .defb #10, #03       ; INK MAGENTA
-  .defm "STRAWBERRY"
-  .defb #F3            ; 3 spaces
-  .defb #10, #02       ; INK RED
-  .defb #A1            ; (strawberry symbol)
-  .defb #10, #06       ; INK YELLOW
-  .defb #F5            ; 5 spaces
-  .defm "300"
-  .defb #16, #0A, #05  ; AT 10, 5
-  .defb #10, #03       ; INK MAGENTA
-  .defm "ORANGE"
-  .defb #F7            ; 7 spaces
-  .defb #10, #06       ; INK YELLOW
-  .defb #A2            ; (orange symbol)
-  .defb #F5            ; 5 spaces
-  .defb #10, #06       ; INK YELLOW
-  .defm "500" 
-  .defb #16, #0C, #05  ; AT 12, 5
-  .defb #10, #03       ; INK MAGENTA
-  .defm "APPLE"
-  .defb #F8            ; 8 spaces
-  .defb #10, #02       ; INK RED
-  .defb #A3            ; (apple symbol)
-  .defb #F5            ; 5 spaces
-  .defb #10, #06       ; INK YELLOW
-  .defm "700"
-  .defb #16, #0E, #05  ; AT 14, 5
-  .defb #10, #03       ; INK MAGENTA
-  .defm "LIME"
-  .defb #F9            ; 9 spaces
-  .defb #10, #04       ; INK GREEN
-  .defb #A4            ; (lime symbol)
-  .defb #F4            ; 4 spaces
-  .defb #10, #06       ; INK YELLOW
-  .defm "1000"
-  .defb #16, #10, #05  ; AT 16, 5
-  .defb #10, #03       ; INK MAGENTA
-  .defm "WHISTLE   "
-  .defb #F3            ; 3 spaces
-  .defb #10, #05       ; INK CYAN
-  .defb #98            ; (whistle symbol)
-  .defb #F4            ; 4 spaces
-  .defb #10, #06       ; ink yellow
-  .defm "2000"
-  .defb #16, #12, #05  ; AT 18, 5
-  .defb #10, #03       ; INK MAGENTA
-  .defm "BELL"
-  .defb #F9            ; 9 spaces
-  .defb #10, #06       ; INK YELLOW
-  .defb #99            ; (bell symbol)
-  .defb #F4            ; 4 spaces
-  .defb #10, #06       ; INK YELLOW
-  .defm "3000" 
-  .defb #16, #14, #05  ; AT 20, 5
-  .defb #10, #03       ; INK MAGENTA
-  .defm "KEY"
-  .defb #FA            ; 10 spaces
-  .defb #10, #05       ; INK CYAN
-  .defb #9F            ; (key symbol)
-  .defb #F4            ; 4 spaces
-  .defb #10, #06       ; INK YELLOW
-  .defm "5000"
-
-// $6032
-  ld hl,PRESS_S_MSG
+  .defb #00, #16, #13, #00, #10, #05, #53, #45
+  .defb #4C, #45, #43, #54, #20, #3A, #20, #31
+  .defb #20, #2D, #20, #4B, #45, #59, #42, #4F
+  .defb #41, #52, #44, #20, #43, #4F, #4E, #54
+  .defb #52, #4F, #4C, #53, #20, #20, #16, #14
+  .defb #09, #10, #05, #32, #20, #2D, #20, #4B
+  .defb #45, #4D, #50, #53, #54, #4F, #4E, #20
+  .defb #4A, #4F, #59, #53, #54, #49, #43, #4B
+  .defb #16, #16, #00, #06, #06, #10, #07, #20
+  .defb #20, #50, #52, #45, #53, #53, #20, #27
+  .defb #53, #27, #20, #54, #4F, #20, #53, #54
+  .defb #41, #52, #54, #20, #54, #48, #45, #20
+  .defb #47, #41, #4D, #45, #20, #16, #00, #0A
+  .defb #10, #06, #50, #4F, #49, #4E, #54, #53
+  .defb #20, #54, #41, #42, #4C, #45, #16, #02
+  .defb #05, #10, #03, #44, #4F, #54, #FA, #10
+  .defb #06, #90, #F6, #31, #30, #16, #04, #05
+  .defb #10, #03, #50, #4F, #57, #45, #52, #20
+  .defb #50, #49, #4C, #4C, #20, #F2, #10, #06
+  .defb #91, #10, #06, #F6, #35, #30, #16, #06
+  .defb #05, #10, #03, #43, #48, #45, #52, #52
+  .defb #59, #F7, #10, #02, #A0, #10, #06, #F5
+  .defb #31, #30, #30, #16, #08, #05, #10, #03
+  .defb #53, #54, #52, #41, #57, #42, #45, #52
+  .defb #52, #59, #F3, #10, #02, #A1, #10, #06
+  .defb #F5, #33, #30, #30, #16, #0A, #05, #10
+  .defb #03, #4F, #52, #41, #4E, #47, #45, #F7
+  .defb #10, #06, #A2, #F5, #10, #06, #35, #30
+  .defb #30, #16, #0C, #05, #10, #03, #41, #50
+  .defb #50, #4C, #45, #F8, #10, #02, #A3, #F5
+  .defb #10, #06, #37, #30, #30, #16, #0E, #05
+  .defb #10, #03, #4C, #49, #4D, #45, #F9, #10
+  .defb #04, #A4, #F4, #10, #06, #31, #30, #30
+  .defb #30, #16, #10, #05, #10, #03, #57, #48
+  .defb #49, #53, #54, #4C, #45, #20, #20, #20
+  .defb #F3, #10, #05, #98, #F4, #10, #06, #32
+  .defb #30, #30, #30, #16, #12, #05, #10, #03
+  .defb #42, #45, #4C, #4C, #F9, #10, #06, #99
+  .defb #F4, #10, #06, #33, #30, #30, #30, #16
+  .defb #14, #05, #10, #03, #4B, #45, #59, #FA
+  .defb #10, #05, #9F, #F4, #10, #06, #35, #30
+  .defb #30, #30
+L6032:
+  ld hl,#5F28
   ld b,#25
-  call PrintMsg
+  call L6168
   ld b,#32
 L603C:
   push bc
   ld hl,#5A69
   ld de,#6989
-  ld a,(LAST_K)
+  ld a,(#5C08)
   cp #53
   jp z,L5DA9
   cp #31
@@ -634,104 +477,78 @@ L603C:
   ret
 L605C:
   call L707F
-  ld a,#D8 ; Opcode of RET C
-L6061:
+  ld a,#D8
   ld (#7050),a
   ld hl,#6955
   ld (#69D6),hl
   ld a,#3C
-  ld (CHARS+1),a   ; Set the normal character set in ROM
-  call ClearScreen
+  ld (#5C37),a
+  call L7C65
   ret
-
-; Some data
   nop
   nop
   nop
-
-SCORES_MSG: // $6076
-  .defb #16, #00, #04  ; AT 0, 4
-  .defb #10, #06       ; INK YELLOW
-  .defm "TODAY'S GREATEST SCORES"
-  .defb #16, #0C, #09  ; AT 12, 9
-  .defm "KEY FUNCTIONS"
-  .defb #16, #0D, #09  ; AT 13, 9
-  .defb #94            ; (arrow left symbol)
-  .defb #F2            ; 2 spaces
-  .defm "'5' OR 'O'"
-  .defb #16, #0E, #09  ; AT 14, 9
-  .defb #95            ; (arrow right symbol)
-  .defb #F2            ; 2 spaces
-  .defm "'8' OR 'P'"
-  .defb #16, #0F, #09  ; AT 15, 9
-  .defb #96            ; (arrow up symbol)
-  .defb #F2            ; 2 spaces
-  .defm "'7' OR 'Q'"
-  .defb #16, #10, #09  ; AT 16, 9
-  .defb #97            ; (arrow down symbol)
-  .defb #F2            ; 2 spaces
-  .defm "'6' OR 'A'"
-  .defb #16, #11, #09  ; AT 17, 9
-  .defm "HOLD: 'H' KEY"
-
-CONGRATS_MSG: // $60EE
-  .defm "CONGRATULATIONS!"
+  .defb #16, #00, #04, #10, #06, #54, #4F, #44
+  .defb #41, #59, #27, #53, #20, #47, #52, #45
+  .defb #41, #54, #45, #53, #54, #20, #53, #43
+  .defb #4F, #52, #45, #53, #16, #0C, #09, #4B
+  .defb #45, #59, #20, #46, #55, #4E, #43, #54
+  .defb #49, #4F, #4E, #53, #16, #0D, #09, #94
+  .defb #F2, #27, #35, #27, #20, #4F, #52, #20
+  .defb #27, #4F, #27, #16, #0E, #09, #95, #F2
+  .defb #27, #38, #27, #20, #4F, #52, #20, #27
+  .defb #50, #27, #16, #0F, #09, #96, #F2, #27
+  .defb #37, #27, #20, #4F, #52, #20, #27, #51
+  .defb #27, #16, #10, #09, #97, #F2, #27, #36
+  .defb #27, #20, #4F, #52, #20, #27, #41, #27
+  .defb #16, #11, #09, #48, #4F, #4C, #44, #3A
+  .defb #20, #27, #48, #27, #20, #4B, #45, #59
   .defb #43, #4F, #4E, #47, #52, #41, #54, #55
   .defb #4C, #41, #54, #49, #4F, #4E, #53, #21
-
-YOURSCORE_MSG: // $60FE
-  .defm "YOUR SCORES IS IN TODAY'S TOP 5:-"
-  .defm "PRESS "
-  .defb #94            ; (arrow left symbol)
-  .defm " AND "
-  .defb #95            ; (arrow right symbol)
-  .defm " TO SELECT INITIALS"
-  .defm "THEN PRESS 'ENTER' KEY:-  "
-
-GAME_OVER_MSG: // $615A
-  .defb #16, #0B, #0B  ; AT 11,11
-  .defb #10, #07       ; INK WHITE
-  .defm "GAME OVER"
-
-; Prints a message to the current channel
-; IN:
-;   B: Number of bytes to print
-;   HL: Start address of message
-; Remarks: If a character code is #F0 or greater, the value above #F0
-;   specified the number of spaces to print
-PrintMsg:
-  push bc          ; Save the length
-  ld a,(hl)        ; A = next character to print
-  cp #F0           ; Is it a normal character?
-  jr c,`normal     ; Go ahead, if normal
-  sub #F0          ; Decrement with #F0
-  ld b,a           ; B = number of spaces to print
-`loop:
-  ld a,#20         ; A = space
-  rst #10          ; Print a space
-  djnz `loop       ; As many, as specified in B
-  jr `nextchar
-`normal:
-  rst #10          ; Print the character in A
-`nextchar:
-  inc hl           ; Increase address
-  pop bc           ; Restore counter
-  djnz PrintMsg    ; Loop until conter reaches zero
-  ret              ; Finished
-
-;
+  .defb #59, #4F, #55, #52, #20, #53, #43, #4F
+  .defb #52, #45, #20, #49, #53, #20, #49, #4E
+  .defb #20, #54, #4F, #44, #41, #59, #27, #53
+  .defb #20, #54, #4F, #50, #20, #35, #3A, #2D
+  .defb #50, #52, #45, #53, #53, #20, #94, #20
+  .defb #41, #4E, #44, #20, #95, #20, #54, #4F
+  .defb #20, #53, #45, #4C, #45, #43, #54, #20
+  .defb #49, #4E, #49, #54, #49, #41, #4C, #53
+  .defb #54, #48, #45, #4E, #20, #50, #52, #45
+  .defb #53, #53, #20, #27, #45, #4E, #54, #45
+  .defb #52, #27, #20, #4B, #45, #59, #3A, #2D
+  .defb #20, #20, #20, #20, #16, #0B, #0B, #10
+  .defb #07, #47, #41, #4D, #45, #20, #4F, #56
+  .defb #45, #52
+L6168:
+  push bc
+  ld a,(hl)
+  cp #F0
+  jr c,L6178
+  sub #F0
+  ld b,a
+L6171:
+  ld a,#20
+  rst #10
+  djnz L6171
+  jr L6179
+L6178:
+  rst #10
+L6179:
+  inc hl
+  pop bc
+  djnz L6168
+  ret
 L617E:
   ld b,#15
 L6180:
   ld (hl),a
-L6181:
   inc hl
   djnz L6180
   ret
 L6185:
   ld l,d
   xor a
-  ld (ControlMode),a
+  ld (#67EE),a
   ld a,#68
   call L617E
   ld l,e
@@ -740,7 +557,7 @@ L6185:
   ret
 L6196:
   ld l,d
-  ld (ControlMode),a
+  ld (#67EE),a
   ld a,#45
   call L617E
   ld l,e
@@ -748,341 +565,247 @@ L6196:
   call L617E
   ret
 L61A6:
-  ld hl,PRESS_S_MSG
+  ld hl,#5F28
   ld b,#25
-  call PrintMsg
+  call L6168
   ld b,#32
 L61B0:
   push bc
-  ld a,(LAST_K)
-L61B4:
+  ld a,(#5C08)
   cp #53
   jp z,L5DA9
-  call DelayForB
+  call L5BF1
   pop bc
   djnz L61B0
   ret
-
-; Data used to display the playground
-TOP_TEXT: // #61C0
-  .defm "SCORE>000000    "
-  .defm "HI-SCORE>000000 "
-PLAYGROUND: // #61E0
-; Line 1
+  .defb #53, #43, #4F, #52, #45, #3E, #30, #30
+  .defb #30, #30, #30, #30, #20, #20, #20, #20
+  .defb #48, #49, #2D, #53, #43, #4F, #52, #45
+  .defb #3E, #30, #30, #30, #30, #30, #30, #20
   .defb #62, #60, #60, #60, #60, #60, #60, #60
   .defb #60, #60, #60, #60, #60, #60, #60, #6B
   .defb #60, #60, #60, #60, #60, #60, #60, #60
   .defb #60, #60, #60, #60, #60, #60, #63, #20
-; Line 2
   .defb #61, #4B, #4B, #4B, #4B, #4B, #4B, #4B
   .defb #4B, #4B, #4B, #4B, #4B, #4B, #4B, #61
   .defb #4B, #4B, #4B, #4B, #4B, #4B, #4B, #4B
   .defb #4B, #4B, #4B, #4B, #4B, #4B, #61, #20
-; Line 3
   .defb #61, #4B, #62, #60, #60, #63, #4B, #62
   .defb #60, #60, #60, #60, #60, #63, #4B, #61
   .defb #4B, #62, #60, #60, #60, #60, #60, #63
   .defb #4B, #62, #60, #60, #63, #4B, #61, #20
-; Line 4
   .defb #61, #4C, #64, #60, #60, #65, #4B, #64
   .defb #60, #60, #60, #60, #60, #65, #4B, #69
   .defb #4B, #64, #60, #60, #60, #60, #60, #65
   .defb #4B, #64, #60, #60, #65, #4C, #61, #20
-; Line 5
   .defb #61, #4B, #4B, #4B, #4B, #4B, #4B, #4B
   .defb #4B, #4B, #4B, #4B, #4B, #4B, #4B, #4B
   .defb #4B, #4B, #4B, #4B, #4B, #4B, #4B, #4B
   .defb #4B, #4B, #4B, #4B, #4B, #4B, #61, #20
-; Line 6
   .defb #61, #4B, #66, #60, #60, #67, #4B, #62
   .defb #63, #4B, #66, #60, #60, #60, #60, #6B
   .defb #60, #60, #60, #60, #67, #4B, #62, #63
   .defb #4B, #66, #60, #60, #67, #4B, #61, #20
-; Line 7
   .defb #61, #4B, #4B, #4B, #4B, #4B, #4B, #61
   .defb #61, #4B, #4B, #4B, #4B, #4B, #4B, #61
   .defb #4B, #4B, #4B, #4B, #4B, #4B, #61, #61
   .defb #4B, #4B, #4B, #4B, #4B, #4B, #61, #20
-; Line 8
   .defb #64, #60, #60, #60, #60, #63, #4B, #61
   .defb #6C, #60, #60, #60, #60, #67, #20, #69
   .defb #20, #66, #60, #60, #60, #60, #6D, #61
   .defb #4B, #62, #60, #60, #60, #60, #65, #20
- ; Line 9
   .defb #20, #20, #20, #20, #20, #61, #4B, #61
   .defb #61, #20, #20, #20, #20, #20, #20, #20
   .defb #20, #20, #20, #20, #20, #20, #61, #61
   .defb #4B, #61, #20, #20, #20, #20, #20, #20
- ; Line 10
   .defb #66, #60, #60, #60, #60, #65, #4B, #64
   .defb #65, #20, #62, #60, #60, #60, #2A, #2A
   .defb #2A, #60, #60, #60, #63, #20, #64, #65
   .defb #4B, #64, #60, #60, #60, #60, #67, #20
- ; Line 11
   .defb #20, #20, #20, #20, #20, #20, #4B, #20
   .defb #20, #20, #61, #20, #29, #20, #29, #20
   .defb #29, #20, #29, #20, #61, #20, #20, #20
   .defb #4B, #20, #20, #20, #20, #20, #20, #20
-; Line 12
   .defb #66, #60, #60, #60, #60, #63, #4B, #62
   .defb #63, #20, #64, #60, #60, #60, #60, #60
   .defb #60, #60, #60, #60, #65, #20, #62, #63
   .defb #4B, #62, #60, #60, #60, #60, #67, #20
-; Line 13
   .defb #20, #20, #20, #20, #20, #61, #4B, #61
   .defb #61, #20, #20, #20, #20, #20, #20, #20
   .defb #20, #20, #20, #20, #20, #20, #61, #61
   .defb #4B, #61, #20, #20, #20, #20, #20, #20
-; Line 14; 
   .defb #62, #60, #60, #60, #60, #65, #4B, #64
   .defb #65, #20, #66, #60, #60, #60, #60, #6B
   .defb #60, #60, #60, #60, #67, #20, #64, #65
   .defb #4B, #64, #60, #60, #60, #60, #63, #20
-; Line 15
   .defb #61, #4B, #4B, #4B, #4B, #4B, #4B, #4B
   .defb #4B, #4B, #4B, #4B, #4B, #4B, #4B, #61
   .defb #4B, #4B, #4B, #4B, #4B, #4B, #4B, #4B
   .defb #4B, #4B, #4B, #4B, #4B, #4B, #61, #20
-; Line 16
   .defb #61, #4B, #66, #60, #60, #63, #4B, #66
   .defb #60, #60, #60, #60, #60, #67, #4B, #69
   .defb #4B, #66, #60, #60, #60, #60, #60, #67
   .defb #4B, #62, #60, #60, #67, #4B, #61, #20
-; Line 17
   .defb #61, #4C, #4B, #4B, #4B, #61, #4B, #4B
   .defb #4B, #4B, #4B, #4B, #4B, #4B, #4B, #25
   .defb #4B, #4B, #4B, #4B, #4B, #4B, #4B, #4B
   .defb #4B, #61, #4B, #4B, #4B, #4C, #61, #20
-; Line 18;
   .defb #6C, #60, #60, #67, #4B, #69, #4B, #62
   .defb #63, #4B, #66, #60, #60, #60, #60, #6B
   .defb #60, #60, #60, #60, #67, #4B, #62, #63
   .defb #4B, #69, #4B, #66, #60, #60, #6D, #20
-; Line 19
   .defb #61, #4B, #4B, #4B, #4B, #4B, #4B, #61
   .defb #61, #4B, #4B, #4B, #4B, #4B, #4B, #61
   .defb #4B, #4B, #4B, #4B, #4B, #4B, #61, #61
   .defb #4B, #4B, #4B, #4B, #4B, #4B, #61, #20
-; Line 20
   .defb #61, #4B, #66, #60, #60, #60, #60, #6A
   .defb #6A, #60, #60, #60, #60, #67, #4B, #69
   .defb #4B, #66, #60, #60, #60, #60, #6A, #6A
   .defb #60, #60, #60, #60, #67, #4B, #61, #20
-; Line 21
   .defb #61, #4B, #4B, #4B, #4B, #4B, #4B, #4B
   .defb #4B, #4B, #4B, #4B, #4B, #4B, #4B, #4B
   .defb #4B, #4B, #4B, #4B, #4B, #4B, #4B, #4B
   .defb #4B, #4B, #4B, #4B, #4B, #4B, #61, #20
-; Line 22
   .defb #64, #60, #60, #60, #60, #60, #60, #60
   .defb #60, #60, #60, #60, #60, #60, #60, #60
   .defb #60, #60, #60, #60, #60, #60, #60, #60
   .defb #60, #60, #60, #60, #60, #60, #65, #20
-; Line 23
   .defb #20, #71, #20, #71, #20, #71, #20, #71
   .defb #20, #71, #20, #71, #20, #71, #20, #20
   .defb #5B, #5C, #5D, #5E, #5F, #53, #54, #5A
   .defb #5A, #5A, #5A, #5A, #5A, #5A, #5A, #20
-
-; The #300 bytes of the plauground attributes
-PG_ATTRS: // 64C0
-; Line 1: Paper black, Ink bright white
   .defb #47, #47, #47, #47, #47, #47, #47, #47
   .defb #47, #47, #47, #47, #47, #47, #47, #47
   .defb #47, #47, #47, #47, #47, #47, #47, #47
   .defb #47, #47, #47, #47, #47, #47, #47, #47
-; Line 2: Paper black; Ink bright blue
   .defb #41, #41, #41, #41, #41, #41, #41, #41
   .defb #41, #41, #41, #41, #41, #41, #41, #41
   .defb #41, #41, #41, #41, #41, #41, #41, #41
   .defb #41, #41, #41, #41, #41, #41, #41, #47
-; Line 3: Paper black; Ink bright blue/bright yellow
   .defb #41, #46, #46, #46, #46, #46, #46, #46
   .defb #46, #46, #46, #46, #46, #46, #46, #41
   .defb #46, #46, #46, #46, #46, #46, #46, #46
   .defb #46, #46, #46, #46, #46, #46, #41, #47
-; Line 4
   .defb #41, #46, #41, #41, #41, #41, #46, #41
   .defb #41, #41, #41, #41, #41, #41, #46, #41
   .defb #46, #41, #41, #41, #41, #41, #41, #41
   .defb #46, #41, #41, #41, #41, #46, #41, #47
-; Line 5
   .defb #41, #46, #41, #41, #41, #41, #46, #41
   .defb #41, #41, #41, #41, #41, #41, #46, #41
   .defb #46, #41, #41, #41, #41, #41, #41, #41
   .defb #46, #41, #41, #41, #41, #46, #41, #47
-; Line 6
   .defb #41, #46, #46, #46, #46, #46, #46, #46
   .defb #46, #46, #46, #46, #46, #46, #46, #46
   .defb #46, #46, #46, #46, #46, #46, #46, #46
   .defb #46, #46, #46, #46, #46, #46, #41, #47
-; Line 7
   .defb #41, #46, #41, #41, #41, #41, #46, #41
   .defb #41, #46, #41, #41, #41, #41, #41, #41
   .defb #41, #41, #41, #41, #41, #46, #41, #41
   .defb #46, #41, #41, #41, #41, #46, #41, #47
-; Line 8
   .defb #41, #46, #46, #46, #46, #46, #46, #41
   .defb #41, #46, #46, #46, #46, #46, #46, #41
   .defb #46, #46, #46, #46, #46, #46, #41, #41
   .defb #46, #46, #46, #46, #46, #46, #41, #47
-; Line 9
   .defb #41, #41, #41, #41, #41, #41, #46, #41
   .defb #41, #41, #41, #41, #41, #41, #41, #41
   .defb #41, #41, #41, #41, #41, #41, #41, #41
   .defb #46, #41, #41, #41, #41, #41, #41, #47
-; Line 10  
   .defb #47, #47, #47, #47, #47, #41, #46, #41
   .defb #41, #41, #41, #41, #41, #41, #41, #41
   .defb #41, #41, #41, #41, #41, #41, #41, #41
   .defb #46, #41, #41, #41, #41, #41, #41, #47
-; Line 11
   .defb #41, #41, #41, #41, #41, #41, #46, #41
   .defb #41, #41, #41, #41, #41, #41, #42, #42
   .defb #42, #41, #41, #41, #41, #41, #41, #41
   .defb #46, #41, #41, #41, #41, #41, #41, #47
-; Line 12
   .defb #47, #47, #47, #47, #47, #47, #46, #46
   .defb #46, #46, #41, #41, #44, #44, #42, #42
   .defb #43, #43, #46, #46, #41, #41, #41, #41
   .defb #46, #46, #46, #46, #46, #46, #46, #47
-; Line 13
   .defb #41, #41, #41, #41, #41, #41, #46, #41
   .defb #41, #41, #41, #41, #41, #41, #41, #41
   .defb #41, #41, #41, #41, #41, #41, #41, #41
   .defb #46, #41, #41, #41, #41, #41, #41, #47
-; Line 14
   .defb #47, #47, #47, #47, #47, #41, #46, #41
   .defb #41, #41, #41, #41, #41, #41, #41, #41
   .defb #41, #41, #41, #41, #41, #41, #41, #41
   .defb #46, #41, #41, #41, #41, #41, #41, #47
-; Line 15
   .defb #41, #41, #41, #41, #41, #41, #46, #41
   .defb #41, #41, #41, #41, #41, #41, #41, #41
   .defb #41, #41, #41, #41, #41, #41, #41, #41
   .defb #46, #41, #41, #41, #41, #41, #41, #47
-; Line 16
   .defb #41, #46, #46, #46, #46, #46, #46, #46
   .defb #46, #46, #46, #46, #46, #46, #46, #41
   .defb #46, #46, #46, #46, #46, #46, #46, #46
   .defb #46, #46, #46, #46, #46, #46, #41, #47
-; Line 17
   .defb #41, #46, #41, #41, #41, #41, #46, #41
   .defb #41, #41, #41, #41, #41, #41, #46, #41
   .defb #46, #41, #41, #41, #41, #41, #41, #41
   .defb #46, #41, #41, #41, #41, #46, #41, #47
-; Line 18
   .defb #41, #46, #46, #46, #46, #41, #46, #46
   .defb #46, #46, #46, #46, #46, #46, #46, #46
   .defb #46, #46, #46, #46, #46, #46, #46, #46
   .defb #46, #41, #46, #46, #46, #46, #41, #47
-; Line 19
   .defb #41, #41, #41, #41, #46, #41, #46, #41
   .defb #41, #46, #41, #41, #41, #41, #41, #41
   .defb #41, #41, #41, #41, #41, #46, #41, #41
   .defb #46, #41, #46, #41, #41, #41, #41, #47
-; Line 20
   .defb #41, #46, #46, #46, #46, #46, #46, #41
   .defb #41, #46, #46, #46, #46, #46, #46, #41
   .defb #46, #46, #46, #46, #46, #46, #41, #41
   .defb #46, #46, #46, #46, #46, #46, #41, #47
-; Line 21
   .defb #41, #46, #41, #41, #41, #41, #41, #41
   .defb #41, #41, #41, #41, #41, #41, #46, #41
   .defb #46, #41, #41, #41, #41, #41, #41, #41
   .defb #41, #41, #41, #41, #41, #46, #41, #47
-; Line 22
   .defb #41, #46, #46, #46, #46, #46, #46, #46
   .defb #46, #46, #46, #46, #46, #46, #46, #46
   .defb #46, #46, #46, #46, #46, #46, #46, #46
   .defb #46, #46, #46, #46, #46, #46, #41, #40
-; Line 23
   .defb #41, #41, #41, #41, #41, #41, #41, #41
   .defb #41, #41, #41, #41, #41, #41, #41, #41
   .defb #41, #41, #41, #41, #41, #41, #41, #41
   .defb #41, #41, #41, #41, #41, #41, #41, #41
-; Line 24
   .defb #00, #00, #00, #00, #00, #00, #00, #00
   .defb #00, #00, #00, #00, #00, #00, #00, #00
   .defb #42, #42, #46, #42, #44, #45, #46, #45
   .defb #45, #45, #45, #45, #45, #45, #45, #00
-// #67C0 
   .defb #0F, #11, #25, #25, #0E, #0B, #01, #01
   .defb #00, #20, #02, #00, #0C, #0B, #01, #FF
-// $67D0
   .defb #00, #20, #04, #00, #10, #0B, #01, #01
   .defb #00, #20, #03, #00, #12, #0B, #01, #01
-// $67E0
   .defb #00, #20, #06, #00, #00, #01, #00, #00
-  .defb #E5, #00, #00, #00, #14, #00
-
-// $67EE
-; Stores the current control mode
-;   #00: Keyboard
-;   Other: Kempston Joystick
-ControlMode:
-   .defb #00
-   
-// $67EF
-   .defb #00
-// $67F0  
-  .defb #0F, #11, #25
-
-// --- Something with movement direction
-/// $67F3
-  .defb #25
-;
-  .defb #0E, #0B, #01, #01
+  .defb #E5, #00, #00, #00, #14, #00, #00, #00
+  .defb #0F, #11, #25, #25, #0E, #0B, #01, #01
   .defb #00, #20, #02, #00, #0C, #0B, #01, #FF
   .defb #00, #20, #04, #00, #10, #0B, #01, #01
   .defb #00, #20, #03, #00, #12, #0B, #01, #01
-  .defb #00, #20, #06, #00
-
-; Some data stored between #6814-#681F
-; 
-L6814:
-  .defb #00, #01, #00, #00, #E3
-
-CurrentScore: // $6819
-  .defb #1A, #00
-
-  .defb #1A
-  .defb #14, #00, #F4, #01
-
-DisplayPlayground: 
-  ld a,#3C         ; Use the standard character set in ROM
-  ld (CHARS+1),a
-
-; OPEN the UPPER SCREEN channel
+  .defb #00, #20, #06
+  .defb #00, #00, #01, #00, #00, #E3, #1A, #00
+  .defb #1A, #14, #00, #F4, #01
+L6820:
+  ld a,#3C
+  ld (#5C37),a
   ld a,#02
   call CHAN_OPEN
-
-; Write the text to the top line
-  ld bc,#0020      ; 32 characters
-  ld de,TOP_TEXT   ; "SCORE> ... HI-SCORE>..."
+  ld bc,#0020
+  ld de,#61C0
   call PR_STRING
-  ld a,#7C         ; Use the character set at #7D00
-  ld (CHARS+1),a
-
-; Display the 23 lines of the playground
+  ld a,#7C
+  ld (#5C37),a
   ld bc,#02E0
-  ld de,PLAYGROUND
+  ld de,#61E0
   call PR_STRING
-
-; Copy the #300 bytes of playground attributes
-; to screen attributes
   ld bc,#0300
-  ld hl,PG_ATTRS
+  ld hl,#64C0
   ld de,#5800
   ldir
   ret
-
-
 L684D:
-  ld hl,(CHARS)    ; HL = Address of the character set table - #100
+  ld hl,(#5C36)
   ld de,#0100
-  add hl,de        ; HL = Address of the character set table
-  ld a,c           ; A = character code
+  add hl,de
+  ld a,c
   rrca
   rrca
   rrca
@@ -1141,26 +864,20 @@ L6891:
   call L684D
   pop bc
   ret
-
-; Sets the print position
-; IN: 
-;   B: Row number (1-24)
-;   C: Column number (0-31)
-PrintAt:
-  push bc          ; Save registers
+L689B:
+  push bc
   push ix
-  ld a,#02         
-  call CHAN_OPEN   ; Print to upper screen
-  pop ix           ; Restore registers
+  ld a,#02
+  call CHAN_OPEN
+  pop ix
   pop bc
-  ld a,#16         ; 
-  rst #10          ; Print "AT" code
+  ld a,#16
+  rst #10
   ld a,b
-  rst #10          ; Print row number
+  rst #10
   ld a,c
-  rst #10          ; Print column number
+  rst #10
   ret
-
 L68AE:
   call L7230
   ld a,#76
@@ -1170,7 +887,6 @@ L68AE:
   xor d
   nop
   pop hl
-; Print ...
 L68B9:
   ld a,#11
   rst #10
@@ -1186,60 +902,53 @@ L68C4:
   ld bc,#0007
   call L68B9
   pop hl
-
-; Print the decimal value of HL in five digits, using leading '0' characters
-PrintHL:
-  push hl          ; Save HL
-  ld e,'0'         ; Use leading '0' (and not space)
-  ld bc,-10000
-  call OUT_SP_NO   ; Print the 1e5 decimal digit
-  ld bc,-1000
-  call OUT_SP_NO   ; Print the 1e4 decimal digit
-  ld bc,-100
-  call OUT_SP_NO   ; Print the 1e3 decimal digit
-  ld c,#F6         ; BC = -10
-  call OUT_SP_NO   ; Print the 1e2 decimal digit
+L68CC:
+  push hl
+  ld e,#30
+  ld bc,#D8F0
+  call OUT_SP_NO
+  ld bc,#FC18
+  call OUT_SP_NO
+  ld bc,#FF9C
+  call OUT_SP_NO
+  ld c,#F6
+  call OUT_SP_NO
   ld a,l
-  call OUT_CODE    ; Print the digit in A (add it to '0')
-  pop hl           ; Restore HL
+  call OUT_CODE
+  pop hl
   ret
-
-; Check control keys
 L68EC:
-  ld a,(ControlMode)
-  cp #00               ; Is controlled from keyboard?
-  call nz,L5DC0        ; No, handle Kempston joystick
-  
-; At this point, LAST_K points to the last direction key pressed.
-; Kempston jostick handler sets LAST_K to emulate key strokes
-  ld a,(LAST_K)
-  cp '5'
+  ld a,(#67EE)
+  cp #00
+  call nz,L5DC0
+  ld a,(#5C08)
+  cp #35
   jp z,L6B03
-  cp '6'
+  cp #36
   jp z,L6B0C
-  cp '7'
+  cp #37
   jp z,L6B15
-  cp '8'
+  cp #38
   jp z,L6B1E
-  cp 'O'
+  cp #4F
   jp z,L6B03
-  cp 'A'
+  cp #41
   jp z,L6B0C
-  cp 'Q'
+  cp #51
   jp z,L6B15
-  cp 'P'
+  cp #50
   jp z,L6B1E
-  cp 'H'
+  cp #48
   jr z,L6926
   jp L6B8F
 L6926:
-  ld hl,(FRAMES)       ; Save FRAMES to HL
-`whileH:
-  ld a,(LAST_K)        ; Check the last key again
-  cp 'H'               ; Is this still 'H'?
-  jr z,`whileH         ; Yes.
-  ld (FRAMES),hl       ; Restore frame count
-  ret                  ; Finished
+  ld hl,(#5C78)
+L6929:
+  ld a,(#5C08)
+  cp #48
+  jr z,L6929
+  ld (#5C78),hl
+  ret
 L6934:
   push bc
   ld b,#FF
@@ -1250,19 +959,17 @@ L6937:
   pop bc
   djnz L6934
   ret
-
-; Checks direction keys
 L693F:
   ld a,#F7
-  in a,(#FE)           ; Read keyboard row '1'...'5'
+  in a,(#FE)
   cpl
   ld d,a
   bit 0,d
   ld a,(#67F3)
   call nz,L5DE2
   bit 1,d
-  call nz,L5DDB ; Right key pressed
-  jp TestUpAndDown      ; 
+  call nz,L5DDB
+  jp L5DD0
 L6955:
   call L693F
   jp L68EC
@@ -1376,7 +1083,7 @@ L6A30:
   call L756D
   call L72FA
   call L7A50
-  ld hl,(FRAMES)
+  ld hl,(#5C78)
   push hl
   ld bc,#0700
   and a
@@ -1400,8 +1107,8 @@ L6A8E:
   ld hl,#0014
   ld (#681C),hl
   xor a
-  ld (FRAMES),a
-  ld (FRAMES+1),a
+  ld (#5C78),a
+  ld (#5C79),a
   ld (#6817),a
   call L72FA
 L6AAC:
@@ -1495,7 +1202,7 @@ L6B5E:
   ld bc,(#67F0)
   ld (#67F0),de
   push de
-  call PrintAt
+  call L689B
   ld a,#20
   rst #10
   pop bc
@@ -1503,7 +1210,7 @@ L6B5E:
   call L72BB
   pop bc
 L6B73:
-  call PrintAt
+  call L689B
   ld bc,#0006
   call L68B9
   ld a,(#67F3)
@@ -1612,7 +1319,7 @@ L6C32:
   sub (ix+#01)
   jp z,L7299
 L6C52:
-  ld a,(FRAMES)
+  ld a,(#5C78)
   bit 3,a
   jr nz,L6CAE
 L6C59:
@@ -1716,7 +1423,7 @@ L6D14:
   ld (ix+#04),a
 L6D1A:
   push bc
-  call PrintAt
+  call L689B
   ld a,(#6815)
   bit 5,a
   jr nz,L6D32
@@ -1743,7 +1450,7 @@ L6D44:
   ld b,(ix+#01)
   ld (ix+#00),e
   ld (ix+#01),d
-  call PrintAt
+  call L689B
   ld a,(ix+#05)
   push af
   cp #2C
@@ -1943,15 +1650,15 @@ L6EAD:
   call L6B5E
 L6EB0:
   call L7342
-  ld hl,(CurrentScore)
+  ld hl,(#6819)
   inc hl
 L6EB7:
   push hl
   ld bc,#0006
-  call PrintAt
+  call L689B
   pop hl
   call L68C4
-  ld (CurrentScore),hl
+  ld (#6819),hl
   call L795D
   ld a,(#681B)
   inc a
@@ -1973,25 +1680,23 @@ L6EE5:
   call L6B5E
   call L7399
   ld hl,#0700
-  ld (FRAMES),hl
+  ld (#5C78),hl
   ld a,(#6815)
   set 4,a
   set 5,a
   ld (#6815),a
   ld a,#14
   ld (#681C),a
-  ld hl,(CurrentScore)
+  ld hl,(#6819)
   ld bc,#0005
   add hl,bc
   jp L6EB7
-
-; The application starts initialization at this point
-StartInit:
-  ld b,#14 ; Delay for 3 seconds
-`DelayLoop:
-  call DelayForB
-  djnz `DelayLoop
-  jp Init
+L6F0A:
+  ld b,#14
+L6F0C:
+  call L5BF1
+  djnz L6F0C
+  jp L7C71
 L6F14:
   call L6B5E
 L6F17:
@@ -2042,9 +1747,9 @@ L6F4C:
   inc a
   ld (#681B),a
   push hl
-  ld hl,(CurrentScore)
+  ld hl,(#6819)
   inc hl
-  ld (CurrentScore),hl
+  ld (#6819),hl
   pop hl
 L6F7B:
   ld a,#20
@@ -2056,13 +1761,13 @@ L6F7B:
   pop bc
   add hl,bc
   ld (#681C),hl
-  ld hl,(CurrentScore)
+  ld hl,(#6819)
   add hl,bc
   push hl
   ld bc,#0006
-  call PrintAt
+  call L689B
   pop hl
-  ld (CurrentScore),hl
+  ld (#6819),hl
   call L68C4
   call L795D
   pop de
@@ -2128,7 +1833,7 @@ L7002:
   inc hl
   ld b,(hl)
   push hl
-  call PrintAt
+  call L689B
   pop hl
   inc hl
   inc hl
@@ -2170,8 +1875,7 @@ L702B:
   dec a
   ld (#6818),a
   cp #E1
-L7050:  
-  ret c     ; The code changes this to RET/RET C dynamically
+  ret c
   ld b,#00
   ld h,#5A
   ld l,a
@@ -2202,7 +1906,7 @@ L7071:
 L707F:
   call L72B6
   ld bc,(#67F0)
-  call PrintAt
+  call L689B
   ld bc,#0006
   call L68B9
   ld a,#25
@@ -2241,7 +1945,7 @@ L70B8:
   ld (#72B4),hl
   call L72B6
   call L70AC
-  call DisplayPlayground
+  call L6820
   call L7808
   call L78A5
   call L7698
@@ -2249,8 +1953,8 @@ L70B8:
   call L76B3
 L70F2:
   xor a
-  ld (FRAMES),a
-  ld (FRAMES+1),a
+  ld (#5C78),a
+  ld (#5C79),a
   ld hl,#0014
   ld (#681C),hl
   ld a,#25
@@ -2282,12 +1986,12 @@ L7117:
   ld (#72B4),hl
   call L72B6
   ld bc,#0100
-  call PrintAt
+  call L689B
   ld bc,#02E0
-  ld de,PLAYGROUND
+  ld de,#61E0
   call PR_STRING
   ld bc,#0300
-  ld hl,PG_ATTRS
+  ld hl,#64C0
   ld de,#5800
   ldir
   call L7808
@@ -2384,8 +2088,8 @@ L7205:
   bit 4,e
   ret z
   xor a
-  ld (FRAMES),a
-  ld (FRAMES+1),a
+  ld (#5C78),a
+  ld (#5C79),a
   inc a
   ld (#6815),a
   ld hl,#0014
@@ -2528,7 +2232,7 @@ L7302:
   inc hl
   ld b,(hl)
   push hl
-  call PrintAt
+  call L689B
   pop hl
   ld bc,#0005
   add hl,bc
@@ -2580,7 +2284,7 @@ L734A:
 L7355:
   push hl
   ld bc,(#67F0)
-  call PrintAt
+  call L689B
   ld bc,#0006
   call L68B9
   ld a,#74
@@ -2614,10 +2318,7 @@ L7372:
   ret
   ld sp,#5D7E
   call #8000
- 
- ; The loader enters the code at this point
- EntryPoint:
-  jp StartInit
+  jp L6F0A
   nop
   nop
 L7399:
@@ -2784,7 +2485,7 @@ L74BB:
   ld (ix+#04),a
 L74C1:
   push bc
-  call PrintAt
+  call L689B
   ld bc,#0005
   call L68B9
   ld a,#2B
@@ -2795,7 +2496,7 @@ L74CE:
   ld b,(ix+#01)
   ld (ix+#00),e
   ld (ix+#01),d
-  call PrintAt
+  call L689B
   ld a,(ix+#05)
   push af
   cp #2C
@@ -2872,12 +2573,12 @@ L7556:
   ld (#6814),a
   ret
 L756D:
-  ld a,(FRAMES+1)
+  ld a,(#5C79)
   cp #08
   jr c,L758C
   cp #09
   jr nc,L758C
-  ld a,(FRAMES)
+  ld a,(#5C78)
   cp #C0
   jr c,L758C
   ld a,(#6815)
@@ -3052,18 +2753,18 @@ L7682:
   jp L7A41
 L7698:
   ld bc,#0D0D
-  call PrintAt
+  call L689B
   ld bc,#0007
   call L68B9
   ld de,#76C3
   ld bc,#0006
   call PR_STRING
   ld a,#35
-  ld (LAST_K),a
+  ld (#5C08),a
   ret
 L76B3:
   ld bc,#0D0D
-  call PrintAt
+  call L689B
   ld b,#06
 L76BB:
   push bc
@@ -3254,7 +2955,7 @@ L77E7:
   push bc
   push hl
   ld bc,(#67F0)
-  call PrintAt
+  call L689B
   ld b,#00
   pop hl
   push hl
@@ -3303,7 +3004,7 @@ L7832:
 L7834:
   push af
   ld bc,(#67F0)
-  call PrintAt
+  call L689B
   push bc
   ld bc,#0007
   call L68B9
@@ -3317,7 +3018,7 @@ L7834:
   rst #10
   ret
   ld a,#06
-  ld (FRAMES),a
+  ld (#5C78),a
   ld a,(#681B)
   cp #09
   jp z,L6B15
@@ -3329,7 +3030,7 @@ L7834:
   ld h,(hl)
 L786C:
   ld bc,#0D0F
-  call PrintAt
+  call L689B
   ld b,#00
   ld a,(#78A4)
   ld c,a
@@ -3339,7 +3040,7 @@ L786C:
   ret
 L787F:
   ld bc,#0D0F
-  call PrintAt
+  call L689B
   ld a,#20
   rst #10
   ret
@@ -3459,19 +3160,19 @@ L7941:
   ld bc,#01F4
 L7944:
   call L5E80
-  ld hl,(CurrentScore)
+  ld hl,(#6819)
   add hl,bc
-  ld (CurrentScore),hl
+  ld (#6819),hl
   push hl
   ld bc,#0006
-  call PrintAt
+  call L689B
   pop hl
   call L68C4
   call L795D
   ret
 L795D:
   ld de,(#681E)
-  ld hl,(CurrentScore)
+  ld hl,(#6819)
   push hl
   and a
   sbc hl,de
@@ -3527,7 +3228,7 @@ L79BA:
   ret
 L79BE:
   ld bc,#0019
-  call PrintAt
+  call L689B
   ld hl,(#681E)
   call L68C4
   ret
@@ -3647,12 +3348,12 @@ L7A50:
   call L7BD2
   ret
 L7A59:
-  ld a,(LAST_K)
+  ld a,(#5C08)
   cp #53
   jp nz,L6B8F
   ld hl,#6955
   ld (#69D6),hl
-  ld a,#D8      ; Opcode of RET C
+  ld a,#D8
   ld (#7050),a
   pop bc
   pop bc
@@ -3685,7 +3386,7 @@ L7A8D:
   cp #C8
   jr nc,L7ABA
   push bc
-  call PrintAt
+  call L689B
   ld bc,#0006
   call L68B9
   ld a,#25
@@ -3698,7 +3399,7 @@ L7ABA:
   jr nc,L7ACA
   cp #C8
   jr nc,L7ACA
-  call PrintAt
+  call L689B
   ld a,#20
   rst #10
 L7ACA:
@@ -3710,7 +3411,7 @@ L7ACA:
   cp #C8
   jr nc,L7AE3
   push bc
-  call PrintAt
+  call L689B
   ld bc,#0002
   call L68B9
   ld a,#29
@@ -3723,7 +3424,7 @@ L7AE3:
   ret nc
   cp #C8
   ret nc
-  call PrintAt
+  call L689B
   ld a,#20
   rst #10
   ret
@@ -3738,11 +3439,11 @@ L7AF2:
   jr nc,L7B18
   cp #C8
   jr nc,L7B18
-  call PrintAt
+  call L689B
   ld a,#20
   rst #10
   dec b
-  call PrintAt
+  call L689B
   ld a,#20
   rst #10
   inc b
@@ -3754,7 +3455,7 @@ L7B18:
   cp #C8
   jr nc,L7B3F
   push bc
-  call PrintAt
+  call L689B
   ld bc,#0006
   call L68B9
   ld a,#41
@@ -3762,7 +3463,7 @@ L7B18:
   pop bc
   push bc
   dec b
-  call PrintAt
+  call L689B
   ld bc,#0006
   call L68B9
   ld a,#3F
@@ -3776,7 +3477,7 @@ L7B3F:
   cp #C8
   jr nc,L7B66
   push bc
-  call PrintAt
+  call L689B
   ld bc,#0006
   call L68B9
   ld a,#42
@@ -3784,7 +3485,7 @@ L7B3F:
   pop bc
   push bc
   dec b
-  call PrintAt
+  call L689B
   ld bc,#0006
   call L68B9
   ld a,#40
@@ -3798,7 +3499,7 @@ L7B66:
   jr nc,L7B77
   cp #C8
   jr nc,L7B77
-  call PrintAt
+  call L689B
   ld a,#20
   rst #10
 L7B77:
@@ -3808,13 +3509,13 @@ L7B77:
   ret nc
   cp #C8
   ret nc
-  call PrintAt
+  call L689B
   ld bc,#0005
   call L68B9
   ld a,#29
   rst #10
   ret
-  jr c,#7C0A
+  jr c,#7C0C
 L7B8E:
   ld hl,(#7B8C)
   push hl
@@ -3859,7 +3560,7 @@ L7BC3:
   ret
   nop
 L7BD2:
-  ld hl,(CurrentScore)
+  ld hl,(#6819)
   ld de,#03E8
   and a
   sbc hl,de
@@ -3952,44 +3653,40 @@ L7C60:
   pop bc
   djnz L7C53
   ret
-
-; Clears the entire screen
-ClearScreen: // $7C65
-  ld bc,#0000          
-  call PrintAt     ; Set the print position to the AT 0, 0
+L7C65:
+  ld bc,#0000
+  call L689B
   ld b,#18
-  call CL_LINE     ; Clear all the 24 lines
+  call CL_LINE
   ret
-
-
-Init:
-  xor a            ; A := 0
-  ld (DF_SZ),a     ; No lines in the lower part of the screen
+L7C71:
+  xor a
+  ld (#5C6B),a
   ld (#5E96),a
-  ld (FRAMES+1),a
-  ld a,#C9         ; Opcode of RET
+  ld (#5C79),a
+  ld a,#C9
   ld (#7050),a
   ld a,#F0
   ld (#78A3),a
   ld hl,#7889
   ld (#78A1),hl
   call L70AC
-  call ClearScreen
-  call DisplayPlayground
+  call L7C65
+  call L6820
   call L7808
   call L78A5
   ld hl,#7851
   ld (#69D6),hl
   call L605C
-  ld hl,POINTS_MSG
+  ld hl,#5F4D
   ld b,#E5
-  call PrintMsg
+  call L6168
   call L61A6
-  call ClearScreen
-  ld hl,SCORES_MSG
+  call L7C65
+  ld hl,#6076
   ld b,#78
-  call PrintMsg
-  ld hl,HiScoreTable
+  call L6168
+  ld hl,#5C97
   ld de,#0209
   ld b,#05
 L7CC1:
@@ -3998,7 +3695,7 @@ L7CC1:
   pop bc
   push bc
   push hl
-  call PrintAt
+  call L689B
   ld bc,#0005
   call L68B9
   pop hl
@@ -4019,7 +3716,7 @@ L7CDF:
   ld a,#20
   rst #10
   djnz L7CDF
-  call PrintHL
+  call L68CC
   ld a,#30
   rst #10
   pop hl
@@ -4028,17 +3725,12 @@ L7CDF:
   inc d
   pop bc
   djnz L7CC1
-  ld hl,SELECT_MSG
+  ld hl,#5EE9
   call L5ED8
-  jp Init
+  jp L7C71
 L7CFA:
-  call ClearScreen
+  call L7C65
   jp L70B8
-
-
-; Character set bitmaps
-  .org #7D00
-; Space
   .defg ........
   .defg ........
   .defg ........
@@ -4047,7 +3739,6 @@ L7CFA:
   .defg ........
   .defg ........
   .defg ........
-; !
   .defg ........
   .defg ...X....
   .defg ...X....
@@ -4056,7 +3747,6 @@ L7CFA:
   .defg ........
   .defg ...X....
   .defg ........
-; Small 1
   .defg ........
   .defg .....X..
   .defg .....X..
@@ -4065,7 +3755,6 @@ L7CFA:
   .defg .....X..
   .defg .....X..
   .defg ........
-; Small 3
   .defg ........
   .defg ..XXXX..
   .defg .....X..
@@ -4074,7 +3763,6 @@ L7CFA:
   .defg .....X..
   .defg ..XXXX..
   .defg ........
-; Small 5
   .defg ........
   .defg ..XXXX..
   .defg ..X.....
@@ -4083,7 +3771,6 @@ L7CFA:
   .defg .....X..
   .defg ..XXXX..
   .defg ........
-; Pacman left
   .defg ..XXXX..
   .defg .XXXXXX.
   .defg XXXXXXXX
@@ -4092,7 +3779,6 @@ L7CFA:
   .defg XXXXXXXX
   .defg .XXXXXX.
   .defg ..XXXX..
-; Pacman down
   .defg ..XXXX..
   .defg .XXXXXX.
   .defg XXXXXXXX
@@ -4101,7 +3787,6 @@ L7CFA:
   .defg XXX.XXXX
   .defg .XX.XXX.
   .defg ..X.XX..
-; Pacman up  
   .defg ..XX.X..
   .defg .XXX.XX.
   .defg XXXX.XXX
@@ -4110,7 +3795,6 @@ L7CFA:
   .defg XXXXXXXX
   .defg .XXXXXX.
   .defg ..XXXX..
-; Pacman right
   .defg ..XXXX..
   .defg .XXXXXX.
   .defg XXXXXXXX
@@ -4119,7 +3803,6 @@ L7CFA:
   .defg XXXXXXXX
   .defg .XXXXXX.
   .defg ..XXXX..
-; Ghost
   .defg ..XXXX..
   .defg .XXXXXX.
   .defg X..X..XX
@@ -4128,7 +3811,6 @@ L7CFA:
   .defg XX.XX.XX
   .defg X..X..X.
   .defg X..X..X.
-; Horizontal line
   .defg ........
   .defg ........
   .defg ........
@@ -4137,7 +3819,6 @@ L7CFA:
   .defg ........
   .defg ........
   .defg ........
- ; Balls
   .defg ........
   .defg ........
   .defg XXX..XXX
@@ -4146,7 +3827,6 @@ L7CFA:
   .defg ........
   .defg ........
   .defg ........
- ; Cherry 
   .defg ....X...
   .defg ....X...
   .defg ...X....
@@ -4155,7 +3835,6 @@ L7CFA:
   .defg XXX.XXX.
   .defg .X...X..
   .defg ........
-; 20  
   .defg ........
   .defg XXX.XXX.
   .defg ..X.X.X.
@@ -4164,7 +3843,6 @@ L7CFA:
   .defg X...X.X.
   .defg XXX.XXX.
   .defg ........
-; 30
   .defg ........
   .defg XXX.XXX.
   .defg ..X.X.X.
@@ -4173,7 +3851,6 @@ L7CFA:
   .defg ..X.X.X.
   .defg XXX.XXX.
   .defg ........
-; 50
   .defg ........
   .defg XXX.XXX.
   .defg X...X.X.
@@ -4182,7 +3859,6 @@ L7CFA:
   .defg ..X.X.X.
   .defg XXX.XXX.
   .defg ........
-; 0
   .defg ........
   .defg ..XXXX..
   .defg .X...XX.
@@ -4191,7 +3867,6 @@ L7CFA:
   .defg .XX...X.
   .defg ..XXXX..
   .defg ........
-; 1  
   .defg ........
   .defg ...XX...
   .defg ..X.X...
@@ -4200,7 +3875,6 @@ L7CFA:
   .defg ....X...
   .defg ..XXXXX.
   .defg ........
-; 2
   .defg ........
   .defg ..XXXX..
   .defg .X....X.
@@ -4209,7 +3883,6 @@ L7CFA:
   .defg .X......
   .defg .XXXXXX.
   .defg ........
-; 3
   .defg ........
   .defg ..XXXX..
   .defg .X....X.
@@ -4218,7 +3891,6 @@ L7CFA:
   .defg .X....X.
   .defg ..XXXX..
   .defg ........
-; 4
   .defg ........
   .defg ....X...
   .defg ...XX...
@@ -4227,7 +3899,6 @@ L7CFA:
   .defg .XXXXXX.
   .defg ....X...
   .defg ........
-; 5
   .defg ........
   .defg .XXXXXX.
   .defg .X......
@@ -4236,7 +3907,6 @@ L7CFA:
   .defg .X....X.
   .defg ..XXXX..
   .defg ........
-; 6
   .defg ........
   .defg ..XXXX..
   .defg .X......
@@ -4245,7 +3915,6 @@ L7CFA:
   .defg .X....X.
   .defg ..XXXX..
   .defg ........
-; 7
   .defg ........
   .defg .XXXXXX.
   .defg ......X.
@@ -4254,7 +3923,6 @@ L7CFA:
   .defg ...X....
   .defg ...X....
   .defg ........
-; 8
   .defg ........
   .defg ..XXXX..
   .defg .X....X.
@@ -4263,7 +3931,6 @@ L7CFA:
   .defg .X....X.
   .defg ..XXXX..
   .defg ........
-; 9
   .defg ........
   .defg ..XXXX..
   .defg .X....X.
@@ -4272,7 +3939,6 @@ L7CFA:
   .defg ......X.
   .defg ..XXXX..
   .defg ........
-; Small 2  
   .defg ........
   .defg ..XXXX..
   .defg ..X..X..
@@ -4281,7 +3947,6 @@ L7CFA:
   .defg ..X.....
   .defg ..XXXX..
   .defg ........
-; Small 4
   .defg ........
   .defg ..X.....
   .defg ..X.X...
@@ -4290,7 +3955,6 @@ L7CFA:
   .defg ....X...
   .defg ....X...
   .defg ........
-; Small 8
   .defg ........
   .defg ..XXXX..
   .defg ..X..X..
@@ -4299,7 +3963,6 @@ L7CFA:
   .defg ..X..X..
   .defg ..XXXX..
   .defg ........
-; Small 16
   .defg ........
   .defg .X.XXXX.
   .defg .X.X....
@@ -4308,7 +3971,6 @@ L7CFA:
   .defg .X.X..X.
   .defg .X.XXXX.
   .defg ........
-; Small 00
   .defg ........
   .defg XXX..XXX
   .defg X.X..X.X
@@ -4317,7 +3979,6 @@ L7CFA:
   .defg X.X..X.X
   .defg XXX..XXX
   .defg ........
-; Arc top-left
   .defg .....XXX
   .defg ...XXXXX
   .defg ..XXXXXX
@@ -4326,7 +3987,6 @@ L7CFA:
   .defg XXXXXXXX
   .defg XXXXXXXX
   .defg XXXXXXXX
-; Arc top-right
   .defg XXX.....
   .defg XXXXX...
   .defg XXXXXX..
@@ -4335,7 +3995,6 @@ L7CFA:
   .defg XXXXXXXX
   .defg XXXXXXXX
   .defg XXXXXXXX
-; Arc bottom-left
   .defg XXXXXX..
   .defg XXXXXX..
   .defg XXXXXXXX
@@ -4344,7 +4003,6 @@ L7CFA:
   .defg ..XXXXXX
   .defg ...XXXXX
   .defg .....XXX
-; Arc bottom-right
   .defg ........
   .defg ........
   .defg XXXXXXXX
@@ -4353,7 +4011,6 @@ L7CFA:
   .defg XXXXXX..
   .defg XXXXX...
   .defg XXX.....
-;
   .defg .....XXX
   .defg ...XXXXX
   .defg ..XXXXXX
@@ -4362,7 +4019,6 @@ L7CFA:
   .defg XXXXXXXX
   .defg XXXXXXXX
   .defg XXXXXXXX
-;
   .defg XXX.....
   .defg XXXXX...
   .defg XXXXXX..
@@ -4371,7 +4027,6 @@ L7CFA:
   .defg XXXXXXXX
   .defg XXXXXXXX
   .defg XXXXXXXX
-;
   .defg XXXXXX..
   .defg XXXXXX..
   .defg XXXXXXXX
@@ -4380,7 +4035,6 @@ L7CFA:
   .defg ..XXXXXX
   .defg ...XXXXX
   .defg .....XXX
-;
   .defg ........
   .defg ........
   .defg XXXXXXXX
@@ -4389,7 +4043,6 @@ L7CFA:
   .defg XXXXXX..
   .defg XXXXX...
   .defg XXX.....
-;
   .defg .....XXX
   .defg ...XXXXX
   .defg ..XXXXXX
@@ -4398,7 +4051,6 @@ L7CFA:
   .defg XXXXXXXX
   .defg XXXXXXXX
   .defg XXXXXX..
-;
   .defg XXX.....
   .defg XXXXX...
   .defg XXXXXXX.
@@ -4407,7 +4059,6 @@ L7CFA:
   .defg XX......
   .defg ........
   .defg ........
-;
   .defg XXXXXX..
   .defg XXXXXXXX
   .defg XXXXXXXX
@@ -4416,7 +4067,6 @@ L7CFA:
   .defg ..XXXXXX
   .defg ...XXXXX
   .defg .....XXX
-;
   .defg ........
   .defg ........
   .defg XX......
@@ -4425,7 +4075,6 @@ L7CFA:
   .defg XXXXXXX.
   .defg XXXXX...
   .defg XXX.....
-;
   .defg ........
   .defg ........
   .defg ........
@@ -4434,7 +4083,6 @@ L7CFA:
   .defg ........
   .defg ........
   .defg ........
-;
   .defg ..XXXX..
   .defg ..XXXX..
   .defg XXXXXXXX
@@ -4443,7 +4091,6 @@ L7CFA:
   .defg XXXXXXXX
   .defg ..XXXX..
   .defg ..XXXX..
-;
   .defg ........
   .defg ..XXXX..
   .defg .....X..
@@ -4452,7 +4099,6 @@ L7CFA:
   .defg .....X..
   .defg .....X..
   .defg ........
-;
   .defg ........
   .defg .X.XXX..
   .defg .X.X.X..
@@ -4461,7 +4107,6 @@ L7CFA:
   .defg .X.X.X..
   .defg .X.XXX..
   .defg ........
-;
   .defg ........
   .defg ...X....
   .defg ..XX....
@@ -4470,7 +4115,6 @@ L7CFA:
   .defg .XXXXXX.
   .defg ..XX....
   .defg ...X....
-;
   .defg ........
   .defg ...X....
   .defg ...XX...
@@ -4479,7 +4123,6 @@ L7CFA:
   .defg XXXXXX..
   .defg ...XX...
   .defg ...X....
-;
   .defg ........
   .defg ...X....
   .defg ..XXX...
@@ -4488,7 +4131,6 @@ L7CFA:
   .defg ..XXX...
   .defg ..XXX...
   .defg ..XXX...
-;
   .defg ........
   .defg ..XXX...
   .defg ..XXX...
@@ -4497,7 +4139,6 @@ L7CFA:
   .defg .XXXXX..
   .defg ..XXX...
   .defg ...X....
-;
   .defg ........
   .defg ........
   .defg XXXX.XX.
@@ -4506,7 +4147,6 @@ L7CFA:
   .defg ...XXXXX
   .defg ....XXX.
   .defg ........
-;
   .defg ........
   .defg ...X....
   .defg ..XXX...
@@ -4515,7 +4155,6 @@ L7CFA:
   .defg XXXXXXX.
   .defg XXXXXXX.
   .defg ...X....
-;
   .defg ........
   .defg .XXXXX..
   .defg .X....X.
@@ -4524,7 +4163,6 @@ L7CFA:
   .defg .X...X..
   .defg .X....X.
   .defg ........
-;
   .defg ........
   .defg .XXXXXX.
   .defg .X......
@@ -4533,7 +4171,6 @@ L7CFA:
   .defg .X......
   .defg .XXXXXX.
   .defg ........
-;
   .defg ........
   .defg ..XXXX..
   .defg .X....X.
@@ -4542,7 +4179,6 @@ L7CFA:
   .defg .X....X.
   .defg .X....X.
   .defg ........
-;
   .defg ........
   .defg .XXXX...
   .defg .X...X..
@@ -4551,7 +4187,6 @@ L7CFA:
   .defg .X...X..
   .defg .XXXX...
   .defg ........
-;
   .defg ........
   .defg X.....X.
   .defg .X...X..
@@ -4560,7 +4195,6 @@ L7CFA:
   .defg ...X....
   .defg ...X....
   .defg ........
-;
   .defg ........
   .defg .XXXXXX.
   .defg .X....X.
@@ -4569,7 +4203,6 @@ L7CFA:
   .defg ...XX...
   .defg ...X....
   .defg ...XXX..
-;
   .defg ....X...
   .defg ....X...
   .defg ...X....
@@ -4578,7 +4211,6 @@ L7CFA:
   .defg XXX.XXX.
   .defg .X...X..
   .defg ........
-;
   .defg ...X....
   .defg .X.X.X..
   .defg X.X.X.X.
@@ -4587,7 +4219,6 @@ L7CFA:
   .defg XX.X.XX.
   .defg .XX.XX..
   .defg ..XXX...
-;
   .defg .......X
   .defg ..XXX.X.
   .defg .XXXXX..
@@ -4596,7 +4227,6 @@ L7CFA:
   .defg XXXXXXX.
   .defg .XXXXX..
   .defg ..XXX...
-;
   .defg ...X....
   .defg ...X....
   .defg .XXXXX..
@@ -4605,7 +4235,6 @@ L7CFA:
   .defg XXXXXXX.
   .defg .XXXXX..
   .defg ..XXX...
-;
   .defg ........
   .defg ........
   .defg ..XXX...
@@ -4614,7 +4243,6 @@ L7CFA:
   .defg .XXXXX..
   .defg ..XXX...
   .defg ........
-;
   .defg ........
   .defg XXXXXXXX
   .defg XXXXXXXX
@@ -4623,7 +4251,6 @@ L7CFA:
   .defg XXXXXXXX
   .defg XXXXXXXX
   .defg ........
-;
   .defg .XX..XX.
   .defg .XX..XX.
   .defg .XX..XX.
@@ -4632,7 +4259,6 @@ L7CFA:
   .defg .XX..XX.
   .defg .XX..XX.
   .defg .XX..XX.
-;
   .defg ........
   .defg ...XXXXX
   .defg ..XXXXXX
@@ -4641,7 +4267,6 @@ L7CFA:
   .defg .XX...XX
   .defg .XX..XXX
   .defg .XX..XX.
-;
   .defg ........
   .defg XXXXX...
   .defg XXXXXX..
@@ -4650,7 +4275,6 @@ L7CFA:
   .defg XX...XX.
   .defg XXX..XX.
   .defg .XX..XX.
-;
   .defg .XX..XX.
   .defg .XX..XXX
   .defg .XX...XX
@@ -4659,7 +4283,6 @@ L7CFA:
   .defg ..XXXXXX
   .defg ...XXXXX
   .defg ........
-;
   .defg .XX..XX.
   .defg XXX..XX.
   .defg XX...XX.
@@ -4668,7 +4291,6 @@ L7CFA:
   .defg XXXXXX..
   .defg XXXXX...
   .defg ........
-;
   .defg ........
   .defg ..XXXXXX
   .defg .XXXXXXX
@@ -4677,7 +4299,6 @@ L7CFA:
   .defg .XXXXXXX
   .defg ..XXXXXX
   .defg ........
-;
   .defg ........
   .defg XXXXXX..
   .defg XXXXXXX.
@@ -4686,7 +4307,6 @@ L7CFA:
   .defg XXXXXXX.
   .defg XXXXXX..
   .defg ........
-;
   .defg ........
   .defg ..XXXX..
   .defg .XXXXXX.
@@ -4695,7 +4315,6 @@ L7CFA:
   .defg .XX..XX.
   .defg .XX..XX.
   .defg .XX..XX.
-;
   .defg .XX..XX.
   .defg .XX..XX.
   .defg .XX..XX.
@@ -4704,7 +4323,6 @@ L7CFA:
   .defg .XXXXXX.
   .defg ..XXXX..
   .defg ........
-;
   .defg .XX..XX.
   .defg XXX..XXX
   .defg XXX..XXX
@@ -4713,7 +4331,6 @@ L7CFA:
   .defg XXXXXXXX
   .defg XXXXXXXX
   .defg ........
-;
   .defg ........
   .defg XXXXXXXX
   .defg XXXXXXXX
@@ -4722,7 +4339,6 @@ L7CFA:
   .defg XXX..XXX
   .defg XXX..XXX
   .defg .XX..XX.
-;
   .defg .XX..XX.
   .defg .XX..XXX
   .defg .XX..XXX
@@ -4731,7 +4347,6 @@ L7CFA:
   .defg .XX..XXX
   .defg .XX..XXX
   .defg .XX..XX.
-;
   .defg .XX..XX.
   .defg XXX..XX.
   .defg XXX..XX.
@@ -4740,7 +4355,6 @@ L7CFA:
   .defg XXX..XX.
   .defg XXX..XX.
   .defg .XX..XX.
-;
   .defg ..XXXX..
   .defg XXXXXXX.
   .defg ..XXXXXX
@@ -4749,7 +4363,6 @@ L7CFA:
   .defg ..XXXXXX
   .defg XXXXXXX.
   .defg ..XXXX..
-;
   .defg ..XXXX..
   .defg .XXXXXX.
   .defg XXXXXXXX
@@ -4758,7 +4371,6 @@ L7CFA:
   .defg XXX..XXX
   .defg .X....X.
   .defg .X....X.
-;
   .defg .X....X.
   .defg .X....X.
   .defg XXX..XXX
@@ -4767,7 +4379,6 @@ L7CFA:
   .defg XXXXXXXX
   .defg .XXXXXX.
   .defg ..XXXX..
-;
   .defg ..XXXX..
   .defg .XXXXXXX
   .defg XXXXXX..
@@ -4776,7 +4387,6 @@ L7CFA:
   .defg XXXXXX..
   .defg .XXXXXXX
   .defg ..XXXX..
-;
   .defg ..XXXX..
   .defg .XXXXXX.
   .defg XXXXXXXX
@@ -4785,7 +4395,6 @@ L7CFA:
   .defg XXXXXXXX
   .defg .XXXXXX.
   .defg ..XXXX..
-;
   .defg ..XXXX..
   .defg .XXXXXX.
   .defg XXXXXXXX
@@ -4794,7 +4403,6 @@ L7CFA:
   .defg XXX.XXXX
   .defg .XX.XXX.
   .defg ..X.XX..
-;
   .defg ..XX.X..
   .defg .XXX.XX.
   .defg XXXX.XXX
@@ -4803,7 +4411,6 @@ L7CFA:
   .defg XXXXXXXX
   .defg .XXXXXX.
   .defg ..XXXX..
-;
   .defg ..XXXX..
   .defg .XXXXXX.
   .defg XXXXXXXX
@@ -4812,7 +4419,6 @@ L7CFA:
   .defg XXXXXXXX
   .defg .XXXXXX.
   .defg ..XXXX..
-;
   .defg ..XXXX..
   .defg .XXXXXX.
   .defg XX..X..X
@@ -4821,7 +4427,6 @@ L7CFA:
   .defg XX.XX.XX
   .defg .X..X..X
   .defg .X..X..X
-;
   .defg ..XXXX..
   .defg .XXXXXX.
   .defg X..X..XX
@@ -4830,7 +4435,6 @@ L7CFA:
   .defg XX.XX.XX
   .defg X..X..X.
   .defg X..X..X.
-;
   .defg ........
   .defg .X....X.
   .defg XXX..XXX
@@ -4839,7 +4443,6 @@ L7CFA:
   .defg XXXXXXXX
   .defg .XXXXXX.
   .defg ..XXXX..
-;
   .defg ........
   .defg ........
   .defg X......X
@@ -4848,7 +4451,6 @@ L7CFA:
   .defg XXXXXXXX
   .defg .XXXXXX.
   .defg ..XXXX..
-;
   .defg ........
   .defg ........
   .defg ........
@@ -4857,7 +4459,6 @@ L7CFA:
   .defg XXXXXXXX
   .defg .XXXXXX.
   .defg ..XXXX..
-;
   .defg ........
   .defg ........
   .defg ........
@@ -4866,7 +4467,6 @@ L7CFA:
   .defg XXXXXXXX
   .defg .XXXXXX.
   .defg ..XXXX..
-;
   .defg ........
   .defg ........
   .defg ........
@@ -4875,7 +4475,6 @@ L7CFA:
   .defg ..XXXX..
   .defg .XXXXXX.
   .defg ..XXXX..
-;
   .defg ........
   .defg ........
   .defg ........
@@ -4884,7 +4483,6 @@ L7CFA:
   .defg ...XX...
   .defg ..XXXX..
   .defg ..XXXX..
-;
   .defg ........
   .defg ........
   .defg ........
@@ -4893,7 +4491,6 @@ L7CFA:
   .defg ........
   .defg ...XX...
   .defg ...XX...
-;
   .defg X......X
   .defg .X....X.
   .defg ..X..X..

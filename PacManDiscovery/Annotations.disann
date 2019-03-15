@@ -1,6 +1,9 @@
 {
   "0": {
-    "Labels": {},
+    "Labels": {
+      "7168": "SYS_VARS",
+      "7350": "MICRODRV_BUFF"
+    },
     "Comments": {},
     "PrefixComments": {},
     "Literals": {},
@@ -14,9 +17,69 @@
       },
       {
         "StartAddress": 6912,
+        "EndAddress": 7167,
+        "SectionType": 1,
+        "Lenght": 256
+      },
+      {
+        "StartAddress": 7168,
+        "EndAddress": 7349,
+        "SectionType": 2,
+        "Lenght": 182
+      },
+      {
+        "StartAddress": 7350,
+        "EndAddress": 7592,
+        "SectionType": 2,
+        "Lenght": 243
+      },
+      {
+        "StartAddress": 7593,
+        "EndAddress": 7903,
+        "SectionType": 1,
+        "Lenght": 311
+      },
+      {
+        "StartAddress": 7904,
+        "EndAddress": 8241,
+        "SectionType": 2,
+        "Lenght": 338
+      },
+      {
+        "StartAddress": 8242,
+        "EndAddress": 8309,
+        "SectionType": 1,
+        "Lenght": 68
+      },
+      {
+        "StartAddress": 8310,
+        "EndAddress": 8551,
+        "SectionType": 2,
+        "Lenght": 242
+      },
+      {
+        "StartAddress": 8552,
+        "EndAddress": 8639,
+        "SectionType": 1,
+        "Lenght": 88
+      },
+      {
+        "StartAddress": 8640,
+        "EndAddress": 10258,
+        "SectionType": 2,
+        "Lenght": 1619
+      },
+      {
+        "StartAddress": 10259,
+        "EndAddress": 10271,
+        "SectionType": 2,
+        "Lenght": 13
+      },
+      {
+        "StartAddress": 10272,
         "EndAddress": 15615,
         "SectionType": 1,
-        "Lenght": 8704
+        "Lenght": 5344
       },
       {
         "StartAddress": 15616,

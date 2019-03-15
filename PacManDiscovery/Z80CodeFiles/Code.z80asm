@@ -1,4 +1,8 @@
 ﻿; Put your Z80 assembly code into code files
+
+KEY_SCAN:
+  .equ #028E
+
 Start:
 	.org #8000
 	ld a,2;	      ; upper screen
@@ -6,14 +10,32 @@ Start:
 	ld hl,Message ; HL points the the message string
 NextCh:
 	ld a,(hl)     ; get next character
-	or a
-	jp z,#12a9    ; jump back to main cycle when terminated
+	cp #FF
+	jr z,Wait    ; jump back to main cycle when terminated
 	rst #10       ; display character
 	inc hl        ; next character
 	jr NextCh     ; next loop
 
+Wait:
+  push bc
+  push hl
+L5B0C:
+  call KEY_SCAN
+  ld a,#FF
+  cp e
+  jr z,L5B16
+  ld a,'X'
+  rst #10
+  jr L5B0C
+L5B16:
+  ld a,'Y'
+  rst #10
+  pop hl
+  pop bc
+  jp #12a9
+
 Message:
-	.dm "\a\x0A\x08" ; AT 10, 4
+	.dm "\a\x10\x00" ; AT 10, 4
 	.dm "\p\x04"     ; INK 4
 	.dm "ZX Spectrum IDE"
-	.db 0x00         ; terminate
+	.db #FF         ; terminate
