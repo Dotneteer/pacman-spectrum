@@ -77,9 +77,69 @@
       },
       {
         "StartAddress": 10272,
+        "EndAddress": 13787,
+        "SectionType": 1,
+        "Lenght": 3516
+      },
+      {
+        "StartAddress": 13788,
+        "EndAddress": 13889,
+        "SectionType": 2,
+        "Lenght": 102
+      },
+      {
+        "StartAddress": 13890,
+        "EndAddress": 14018,
+        "SectionType": 1,
+        "Lenght": 129
+      },
+      {
+        "StartAddress": 14019,
+        "EndAddress": 14026,
+        "SectionType": 2,
+        "Lenght": 8
+      },
+      {
+        "StartAddress": 14027,
+        "EndAddress": 14087,
+        "SectionType": 1,
+        "Lenght": 61
+      },
+      {
+        "StartAddress": 14088,
+        "EndAddress": 14137,
+        "SectionType": 2,
+        "Lenght": 50
+      },
+      {
+        "StartAddress": 14138,
+        "EndAddress": 14190,
+        "SectionType": 1,
+        "Lenght": 53
+      },
+      {
+        "StartAddress": 14191,
+        "EndAddress": 14254,
+        "SectionType": 2,
+        "Lenght": 64
+      },
+      {
+        "StartAddress": 14255,
+        "EndAddress": 14794,
+        "SectionType": 1,
+        "Lenght": 540
+      },
+      {
+        "StartAddress": 14795,
+        "EndAddress": 14902,
+        "SectionType": 2,
+        "Lenght": 108
+      },
+      {
+        "StartAddress": 14903,
         "EndAddress": 15615,
         "SectionType": 1,
-        "Lenght": 5344
+        "Lenght": 713
       },
       {
         "StartAddress": 15616,

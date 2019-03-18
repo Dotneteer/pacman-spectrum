@@ -1,3 +1,9 @@
+#include "PacManStructs.z80asm"
+
+; This is the entry point
+.ent EntryPoint
+.xent EntryPoint
+
 ; External symbols
 BEEPER:
   .equ #03B5
@@ -27,6 +33,18 @@ CHARS:
 			 ; RAM and make CHARS point to it.
 LAST_K:
   .equ #5C08 ; Stores newly pressed key
+ATTR_P:
+  .equ #5C8D ; Permanent current colors
+
+; Pac-Man character set constants
+PM_LEFT:
+  .equ #25
+PM_RIGHT: 
+  .equ #28
+PM_UP:
+  .equ #27
+PM_DOWN:
+  .equ #26
 
 ; The code starts at the beginning of the print buffer area (#5B00)
   .org #5B00
@@ -39,39 +57,42 @@ LAST_K:
 ; OUT:
 ;   Carry is set if the point is greater than the entry point
 CheckHsEntry:
-  ld l,(ix+#03)    ; Get the point value from the Hi-Score entry
+  ld l,(ix+#03)        ; Get the point value from the Hi-Score entry
   ld h,(ix+#04)
-  and a            ; Reset Carry
-  sbc hl,de        ; Do the test
-  ret              ; Return with carry set, if point greater than 
-                   ; the current entry
+  and a                ; Reset Carry
+  sbc hl,de            ; Do the test
+  ret                  ; Return with carry set, if point greater than 
+                       ; the current entry
 
-; Waits while no key is pressed
+; Waits until no key is pressed
 WaitForNoKey:
-  push bc       ; Save regs
+  push bc              ; Save regs
   push hl
 `loop:
-  call KEY_SCAN ; Scan the keyboard
+  call KEY_SCAN        ; Scan the keyboard
   ld a,#FF
-  cp e          ; E = #FF? 
-  jr z,`nokey   ; Yes, no key is pressed
+  cp e                 ; E = #FF? 
+  jr z,`nokey          ; Yes, no key is pressed
   jr `loop      
 `nokey:
-  xor a         ; Store 0
-  ld (#6816),a  ; to ...
-  pop hl        ; Restore regs
+  xor a                ; Store 0
+  ld (GhostFlags),a         ; to ...
+  pop hl               ; Restore regs
   pop bc        
-  ret           ; Finished
+  ret                  ; Finished
 
-; TODO
-L5B1D:
+; Sets the control mode according to the
+; ControlMode variable
+SetControlMode:
   call DelayForB
   ld a,(ControlMode)
   cp #00        ; Controlled from keyboard?
-  jp z,L6185    ; No, jump to Kempston joystick
-  jp L6196      ; Yes, jump tot Keyboard
-  nop
-  nop
+  jp z,SelectKeyboard  ; Yes, jump to Keyboard
+  jp SelectKempston    ; No, jump to Kempston joystick
+
+; Unused data
+// $5B2B
+  .defb 0, 0
 
 ; This subroutine checks if the current game point fits in the Hi-Score
 ; table. If it is so, it asks for the player name and stores the new
@@ -83,7 +104,7 @@ EnterHiScore:
   ld ix,HiScoreTable   
   call CheckHsEntry    ; Current point is greater than the top entry
                        ; in the Hi-Score table?
-  jr c,`newHiScore    ; Jump if there's a new Top Score
+  jr c,`newHiScore     ; Jump if there's a new Top Score
 
 ; Test the next Hi-Score table entry
 `nextHsEntry:
@@ -169,7 +190,7 @@ EnterHiScore:
   inc a                ; Increment letter code 
   cp #5B               ; Reached '['?
   jr nz,`storeNext
-  ld a,#41             ; Set letter to 'A'
+  ld a,'A'             ; Set letter to 'A'
 `storeNext:
   ld h,a               ; Save the current letter in H
   pop bc
@@ -181,7 +202,7 @@ EnterHiScore:
   ld a,h
   rst #10              ; Print the current letter
   call DelayForB       ; Wait
-  ld a,(#6816)         ; TODO
+  ld a,(GhostFlags)         ; TODO
   bit 7,a
   call nz,WaitForNoKey ; Wait until the key is released
   ld a,#21
@@ -194,11 +215,11 @@ EnterHiScore:
   push hl              ; Save name pointer
   xor a   
   set 7,a              ; A = #80 (Bit 7 set)
-  ld (#6816),a         ; Store the state flag
+  ld (GhostFlags),a         ; Store the state flag
   inc c                ; Increment column position
   ld a,#11           
   cp c                 ; Column 17 reached?
-  ld a,#41             ; A = 'A'
+  ld a,'A'             ; A = 'A'
   jr nz,`nextNameChar  ; There are still name letters to collect
 
 ; Now it's time to store the score value
@@ -209,20 +230,20 @@ EnterHiScore:
   ld (hl),d            ; Store game point to Hi-Score table
   ret                  ; Finished
 
-; Waits for B*0.16 seconds
+; Waits for 0.16 seconds
 DelayForB: // $5BF1
   push bc
   ld b,#40
 `loop1:
-  push bc      ; 11T
-  ld b,#FF     ; 7T
+  push bc              ; 11T
+  ld b,#FF             ; 7T
 `loop2:
-  push bc      ; 11T
-  pop bc       ; 10T
-  djnz `loop2  ; 13/8T -> inner loop: 8.670T
-  pop bc       ; 10T
-  djnz `loop1  ; 13/8T
-  pop bc       ; outer loop -> 557.504T, 0.16 sec
+  push bc              ; 11T
+  pop bc               ; 10T
+  djnz `loop2          ; 13/8T -> inner loop: 8.670T
+  pop bc               ; 10T
+  djnz `loop1          ; 13/8T
+  pop bc               ; outer loop -> 557.504T, 0.16 sec
   ret
 
 ; System variables area (#5C00-#5CB6)
@@ -310,78 +331,87 @@ MICRODRV_BUFF:
   .defb #45, #53, #45, #52, #56, #45, #44, #2E
   .defb #00, #00, #00
 
-; TODO
-L5DA9:
+; Starts playing the game.
+; When the user preses the 'S' (Start) key, the program 
+; start playing the game at this point.
+StartGame:
   pop bc
   call L7CFA
   ld a,#3C         
-  ld (CHARS+1),a   ; Set the normal character set in ROM 
+  ld (CHARS+1),a       ; Set the normal character set in ROM 
   ld hl,GAME_OVER_MSG
   ld b,#0E
-  call PrintMsg    ; Display "GAME OVER"
-  call L5DFA
+  call PrintMsg        ; Display "GAME OVER"
+  call ScoreGame
   jp L7117
 
 ; Scans the Kempston Joystick
-L5DC0:
-  in a,(#1F)       ; Read Kempston port
-  ld d,a           ; D = port data
+ScanKempston:
+  in a,(#1F)           ; Read Kempston port
+  ld d,a               ; D = port data
   bit 0,d
-  ld a,(#67F3)     ; Get direction status
-  call nz,L5DDB    ; Right pressed
+  ld a,(PacManLastDir) ; Get direction status
+  call nz,ControlRight ; Right pressed
   bit 1,d
-  call nz,L5DE2    ; Left pressed;
+  call nz,ControlLeft  ; Left pressed;
 TestUpAndDown:
   bit 2,d
-  call nz,L5DE9    ; Down pressed;
+  call nz,ControlDown  ; Down pressed;
   bit 3,d
-  call nz,L5DF0    ; Up pressed;
-  ret              ; Finished  
+  call nz,ControlUp    ; Up pressed;
+  ret                  ; Finished  
 
 ; Right direction selected
-L5DDB:
-  cp #28           ; Current direction is right?
-  ret z            ; Return, if so
-  ld a,#38         ; A=Right arrow key code
-  jr L5DF5
+ControlRight:
+  cp #28               ; Current direction is right?
+  ret z                ; Return, if so
+  ld a,'8'             ; A = Right arrow key code
+  jr ControlStore
 
 ; Left direction selected;
-L5DE2:
-  cp #25
-  ret z
-  ld a,#35
-  jr L5DF5
+ControlLeft:
+  cp #25               ; Current direction is left?
+  ret z                ; Return, if so
+  ld a,'5'             ; A = Left arrow key code
+  jr ControlStore
 
 ; Down direction selected
-L5DE9:
-  cp #26
-  ret z
-  ld a,#36
-  jr L5DF5
+ControlDown:
+  cp #26               ; Current direction is down?
+  ret z                ; Return, if so
+  ld a,'6'             ; A = Down arrow key code
+  jr ControlStore
 
 ; Up direction selected;
-L5DF0:
-  cp #27
-  ret z
-  ld a,#37
-L5DF5:
-  pop bc           ; Remove the address from stack
-  ld (LAST_K),a    ; Store A as the last pressed key code
+ControlUp:
+  cp #27               ; Current direction is up?
+  ret z                ; Return, if so
+  ld a,#37             ; A = Up arrow key
+ControlStore:
+  pop bc               ; Remove the address from stack
+  ld (LAST_K),a        ; Store A as the last pressed key code
   ret
-L5DFA:
-  ld b,#0A
-L5DFC:
+
+; When the game completed, the program enters here to 
+; score the game. When a new Hi-Score is achieved, it
+; ask for the user to enter name, and stores the results
+; in the Hi-Score table.
+ScoreGame:
+  ld b,#0A             ; B = Wait counter
+`loop:
   call DelayForB
-  djnz L5DFC
+  djnz `loop           ; Wait for appr. 1.6 seconds
   call ClearScreen
   ld a,#3C
-  ld (CHARS+1),a
-  ld a,#46
-  ld (#5C8D),a
-  call EnterHiScore
-  ld a,#40
-  ld (#5C8D),a
+  ld (CHARS+1),a       ; Set the ROM character set
+  ld a,#46             ; BRIGTH, PAPER BLACK, INK YELLOW
+  ld (ATTR_P),a        ; Set this permanent color
+  call EnterHiScore    ; Check if there's a Hi-Score
+  ld a,#40             ; ; BRIGTH, PAPER BLACK, INK WHITE
+  ld (ATTR_P),a        ; Set this permanent color
   ret
+
+; TODO
 L5E17:
   push hl
   call L7817
@@ -389,7 +419,7 @@ L5E17:
   call L73B2
   pop bc
   dec c
-  call L6B73
+  call ShowPacMan
   nop
   nop
   nop
@@ -405,7 +435,7 @@ L5E38:
   ld bc,#0006
 L5E3B:
   push af
-  call L68B9
+  call SetPrintColor
   pop af
   rst #10
   pop hl
@@ -449,11 +479,12 @@ L5E7B:
   ld a,#2F
 L5E7D:
   jp L7834
+
 L5E80:
   push bc
   call L5E43
   call L7971
-  ld bc,(#67F0)
+  ld bc,(PacManPos)
   call PrintAt
   ld a,#20
   push af
@@ -462,10 +493,14 @@ L5E80:
   rst #10
   pop bc
   ret
-  ld b,(hl)
+
+; Some DATA
+// $5E96
+  .defb #46;
+
 L5E97:
   push hl
-  call L6891
+  call GetScreenChar
   pop hl
   cp #4C
   ret nz
@@ -499,7 +534,7 @@ L5EB0:
 L5ED8:
   ld b,#3F
   call PrintMsg
-  jp #6032
+  jp HiScorePage
   
 ; Data Area #5EE0-#6031
   .defb #02, #BB, #5A, #30, #5F, #EE, #3D, #C8
@@ -612,26 +647,32 @@ POINTS_MSG: // $5F4D
   .defb #10, #06       ; INK YELLOW
   .defm "5000"
 
-// $6032
-  ld hl,PRESS_S_MSG
-  ld b,#25
-  call PrintMsg
-  ld b,#32
-L603C:
+; Displays the Hu-Score page and allows the user to
+; select control mode or start the game.
+; The page allows about 8 seconds for user input
+; before going to the demo page.
+HiScorePage:
+  ld hl,PRESS_S_MSG    
+  ld b,37              ; (37 characters)            
+  call PrintMsg        ; Prints the "PRESS 'S' TO..." message
+  ld b,#32             ; Timing counter (0.16 second for each count)
+`loop:
   push bc
-  ld hl,#5A69
-  ld de,#6989
+  ld hl,#5A69          ; Attr address for "1 - KEYBOARD..." text
+  ld de,#6989          ; D = Low byte for "1 - KEYBOARD..."
+                       ; E = Low byte for "2 - KEMPSTON..."
   ld a,(LAST_K)
-  cp #53
-  jp z,L5DA9
-  cp #31
-  call z,L6185
-  cp #32
-  call z,L6196
-  call L5B1D
+  cp 'S'               ; Is 'S' pressed?
+  jp z,StartGame
+  cp '1'               ; Is '1' pressed?
+  call z,SelectKeyboard
+  cp '2'               ; Is '2' pressed?
+  call z,SelectKempston
+  call SetControlMode
   pop bc
-  djnz L603C
+  djnz `loop
   ret
+
 L605C:
   call L707F
   ld a,#D8 ; Opcode of RET C
@@ -676,8 +717,6 @@ SCORES_MSG: // $6076
 
 CONGRATS_MSG: // $60EE
   .defm "CONGRATULATIONS!"
-  .defb #43, #4F, #4E, #47, #52, #41, #54, #55
-  .defb #4C, #41, #54, #49, #4F, #4E, #53, #21
 
 YOURSCORE_MSG: // $60FE
   .defm "YOUR SCORES IS IN TODAY'S TOP 5:-"
@@ -719,34 +758,42 @@ PrintMsg:
   djnz PrintMsg    ; Loop until conter reaches zero
   ret              ; Finished
 
-;
-L617E:
-  ld b,#15
-L6180:
-  ld (hl),a
-L6181:
-  inc hl
-  djnz L6180
-  ret
-L6185:
+; Sets the attributes behind the "1 - KEYBOARD..." or
+; "2 - KEMPSTON..." messages
+; IN:
+;   A: Color attribute
+;   HL: First attribute address
+ControlMsgAttr:
+  ld b,21              ; 21 characters
+`loop:
+  ld (hl),a            ; Store the attribute
+  inc hl               ; Next attribute address
+  djnz `loop
+  ret                  ; Finished
+
+; Selects the keyboard as the control method
+SelectKeyboard:
   ld l,d
-  xor a
-  ld (ControlMode),a
-  ld a,#68
-  call L617E
+  xor a                ; A = 0
+  ld (ControlMode),a   ; Set control mode for keyboard
+  ld a,#68             ; BRIGTH, PAPER CYAN, INK BLACK
+  call ControlMsgAttr
   ld l,e
-  ld a,#45
-  call L617E
+  ld a,#45             ; BRIGHT, PAPER BLACK, INK CYAN
+  call ControlMsgAttr
   ret
-L6196:
+
+; Selects Kempston joystick as the control method
+SelectKempston:
   ld l,d
   ld (ControlMode),a
-  ld a,#45
-  call L617E
+  ld a,#45             ; BRIGHT, PAPER BLACK, INK CYAN
+  call ControlMsgAttr
   ld l,e
-  ld a,#68
-  call L617E
+  ld a,#68             ; BRIGTH, PAPER CYAN, INK BLACK
+  call ControlMsgAttr
   ret
+
 L61A6:
   ld hl,PRESS_S_MSG
   ld b,#25
@@ -756,8 +803,8 @@ L61B0:
   push bc
   ld a,(LAST_K)
 L61B4:
-  cp #53
-  jp z,L5DA9
+  cp 'S'               ; Is 'S' pressed?
+  jp z,StartGame
   call DelayForB
   pop bc
   djnz L61B0
@@ -1006,13 +1053,18 @@ PG_ATTRS: // 64C0
   .defb #00, #00, #00, #00, #00, #00, #00, #00
   .defb #42, #42, #46, #42, #44, #45, #46, #45
   .defb #45, #45, #45, #45, #45, #45, #45, #00
-// #67C0 
-  .defb #0F, #11, #25, #25, #0E, #0B, #01, #01
+
+// #67C0
+; The initial game state vector
+; When a new game starts, this vector is copied to
+; PacManPos (#2E bytes)
+StartingGameState
+  .defb #0F, #11       ; Pac-Man position: AT 15, 17
+  .defb PM_LEFT        ; Pac-Man faces to left
+  .defb #25, #0E, #0B, #01, #01
   .defb #00, #20, #02, #00, #0C, #0B, #01, #FF
-// $67D0
   .defb #00, #20, #04, #00, #10, #0B, #01, #01
   .defb #00, #20, #03, #00, #12, #0B, #01, #01
-// $67E0
   .defb #00, #20, #06, #00, #00, #01, #00, #00
   .defb #E5, #00, #00, #00, #14, #00
 
@@ -1025,23 +1077,65 @@ ControlMode:
    
 // $67EF
    .defb #00
-// $67F0  
-  .defb #0F, #11, #25
 
-// --- Something with movement direction
-/// $67F3
-  .defb #25
-;
-  .defb #0E, #0B, #01, #01
-  .defb #00, #20, #02, #00, #0C, #0B, #01, #FF
-  .defb #00, #20, #04, #00, #10, #0B, #01, #01
-  .defb #00, #20, #03, #00, #12, #0B, #01, #01
-  .defb #00, #20, #06, #00
+// $67F0
+; The game's state vector (#2e bytes)
+; The current position of Pac-Man, row + column
+PacManPos:
+  .defb #0F, #11
+; Pac-Man's direction
+PacManDir: // $67F2
+  .defb PM_LEFT
+PacManLastDir: // $67F3
+  .defb PM_LEFT
+
+; The table that stores the states of the 4 gosts
+Ghost0State:
+// $67F4
+  .defb #0E, #0B, #01, #01, #00, #20, #02, #00
+Ghost1State:
+// $67FC
+  .defb #0C, #0B, #01, #FF, #00, #20, #04, #00
+Ghost2State:
+// $6804
+  .defb #10, #0B, #01, #01, #00, #20, #03, #00
+Ghost3State:
+// $680C
+  .defb #12, #0B, #01, #01, #00, #20, #06, #00
 
 ; Some data stored between #6814-#681F
 ; 
 L6814:
-  .defb #00, #01, #00, #00, #E3
+  .defb #00
+; Game flags
+// $6815
+; Bit 0:
+; Bit 1:
+; Bit 2:
+; Bit 3:
+; Bit 4:
+; Bit 5: Chase mode, Pac-Man can chase ghosts
+; Bit 6: "Chase mode is about to expire" flash bit
+; Bit 7:
+  .defb #01
+
+// $6816
+; Bit 0: Ghost #0 is caught
+; Bit 1: Ghost #1 is caught
+; Bit 2: Ghost #2 is caught
+; Bit 3: Ghost #3 is caught
+; Bit 4:
+; Bit 5:
+; Bit 6:
+; Bit 7:
+GhostFlags:
+  .defb #00
+
+// $6817
+  .defb #00
+
+// $6818
+  .defb #E3
 
 CurrentScore: // $6819
   .defb #1A, #00
@@ -1049,7 +1143,7 @@ CurrentScore: // $6819
   .defb #1A
   .defb #14, #00, #F4, #01
 
-DisplayPlayground: 
+DisplayMaze: 
   ld a,#3C         ; Use the standard character set in ROM
   ld (CHARS+1),a
 
@@ -1077,70 +1171,86 @@ DisplayPlayground:
   ldir
   ret
 
-
-L684D:
-  ld hl,(CHARS)    ; HL = Address of the character set table - #100
+; Gets the code of the character at the position specified by B and C
+; IN:
+;   B: Column number (0-31)
+;   C: Row number (0-23)
+CharOnScreen:
+  ld hl,(CHARS)        ; HL = Address of the character set table - #100
   ld de,#0100
-  add hl,de        ; HL = Address of the character set table
-  ld a,c           ; A = character code
+  add hl,de            ; HL = Address of the character set table
+
+; Calculate the screen address of the position
+; Move row position to Bit 5..Bit 7
+  ld a,c               ; A = column number
   rrca
   rrca
   rrca
-  and #E0
-  xor b
-  ld e,a
-  ld a,c
-  and #18
-  xor #40
-  ld d,a
-  ld b,#60
-L6864:
-  push bc
-  push de
-  push hl
-  ld a,(de)
-  xor (hl)
-  jr z,L686F
-  inc a
-  jr nz,L6886
-  dec a
-L686F:
-  ld c,a
-  ld b,#07
-L6872:
-  inc d
-  inc hl
-  ld a,(de)
-  xor (hl)
-  xor c
-  jr nz,L6886
-  djnz L6872
-  pop bc
+  and #E0              ;
+  xor b                ; Move column position to Bit 0..Bit 7 
+  ld e,a               ; E=Bit 0..Bit 7 of screen address
+  ld a,c               ; A=row number 
+  and #18              ; Keep only the most significant 2 bit of row
+  xor #40              ; Set Bit 13..Bit 15 to '010'
+  ld d,a               ; D=Bit 8..Bit 15 of screenaddress
+
+; Iterate through all 96 characters in the generator table 
+  ld b,96              ; B=counter (96)
+`checkChar:
+  push bc              ; Save counter
+  push de              ; Save screen address
+  push hl              ; Save character address
+  ld a,(de)            ; XOR the screen byte and the first
+  xor (hl)             ; character byte
+  jr z,`firstByteMatch ; Jump, if first byte matches
+  inc a                ; If a was #FF, not it's 0, meaning that
+                       ; we're checking for an inverted character
+  jr nz,`nextChar      ; Jump, if the first byte of character does not match
+  dec a                ; At this point A is #FF
+`firstByteMatch:
+  ld c,a               ; C is 0 or #FF (if we look for inverted char)
+  ld b,#07             ; Test the remaining 7 rows of the character
+`nextByte:
+  inc d                ; Next screen row
+  inc hl               ; Next character byte
+  ld a,(de)         
+  xor (hl)             ; Check for match and consider
+  xor c                ; the inverted state
+  jr nz,`nextChar      ; No match
+  djnz `nextByte       ; Loop until the entire character is tested
+  pop bc               ; Match found, clean up the stack
   pop bc
   pop bc
   ld a,#80
-  sub b
-  ld bc,#0001
-  jr L6890
-L6886:
-  pop hl
-  ld de,#0008
-  add hl,de
-  pop de
-  pop bc
-  djnz L6864
-  ld c,b
-L6890:
+  sub b                ; A=the code of the character found
+  ld bc,#0001          ; BC=1, meaning that match found
+  jr `finished
+`nextChar:
+  pop hl               ; HL=character address
+  ld de,#0008          
+  add hl,de            ; HL now points to the next character
+  pop de               ; Restore screen address
+  pop bc               ; Restore character counter
+  djnz `checkChar      ; Loop until these is any character lect
+  ld c,b               ; BC=0, meaning no match found
+`finished:
   ret
-L6891:
-  push bc
+
+; Gets the character from the specified screen position
+; IN:
+;   B: Row number (0-23)
+;   C: Column number (0-31)
+; OUT:
+;   A: Code of the character at the specified position
+GetScreenChar:
+  push bc              ; Save BC to stack
   ld d,b
   ld e,c
-  ld b,e
+  ld b,e               ; Exchange B and C
   ld c,d
-  call L684D
-  pop bc
-  ret
+  call CharOnScreen
+  pop bc               ; Restore BC
+  ret                  ; Finished
 
 ; Sets the print position
 ; IN: 
@@ -1166,25 +1276,34 @@ L68AE:
   ld a,#76
   ld (hl),a
   ret
+
+; Probably some data or unused
+// $68b5
   nop
   xor d
   nop
   pop hl
-; Print ...
-L68B9:
-  ld a,#11
-  rst #10
-  ld a,b
-  rst #10
-  ld a,#10
-  rst #10
-  ld a,c
-  rst #10
+
+; Sets the current PAPER and INK color
+; IN:
+;   B: PAPER color
+;   C: INK color
+SetPrintColor:
+  ld a,#11         
+  rst #10          ; Print 'PAPER'
+  ld a,b           ; Use B as PAPER color
+  rst #10          ; Print PAPER color
+  ld a,#10        
+  rst #10          ; Print INK
+  ld a,c           ; Use C as INK color
+  rst #10          ; Print INK color
   ret
-L68C4:
+
+; Prints the score stored in the HL register
+PrintScore:
   push hl
   ld bc,#0007
-  call L68B9
+  call SetPrintColor
   pop hl
 
 ; Print the decimal value of HL in five digits, using leading '0' characters
@@ -1208,7 +1327,7 @@ PrintHL:
 L68EC:
   ld a,(ControlMode)
   cp #00               ; Is controlled from keyboard?
-  call nz,L5DC0        ; No, handle Kempston joystick
+  call nz,ScanKempston        ; No, handle Kempston joystick
   
 ; At this point, LAST_K points to the last direction key pressed.
 ; Kempston jostick handler sets LAST_K to emulate key strokes
@@ -1258,10 +1377,10 @@ L693F:
   cpl
   ld d,a
   bit 0,d
-  ld a,(#67F3)
-  call nz,L5DE2
+  ld a,(PacManLastDir)
+  call nz,ControlLeft
   bit 1,d
-  call nz,L5DDB ; Right key pressed
+  call nz,ControlRight ; Right key pressed
   jp TestUpAndDown      ; 
 L6955:
   call L693F
@@ -1275,19 +1394,19 @@ L695B:
   ld a,(#68B8)
   cp #FF
   call z,L787F
-  ld bc,(#67F0)
-  call L72C7
+  ld bc,(PacManPos)
+  call ShowGapingPacMan
   call L7C42
-  ld a,(#6816)
-  bit 0,a
-  call nz,L6BED
-  ld a,(#6816)
+  ld a,(GhostFlags)
+  bit 0,a              ; I Ghost #0 Caught?
+  call nz,L6BED        ; Yes.
+  ld a,(GhostFlags)
   bit 1,a
   call nz,L6BFB
-  ld a,(#6816)
+  ld a,(GhostFlags)
   bit 2,a
   call nz,L6C09
-  ld a,(#6816)
+  ld a,(GhostFlags)
   bit 3,a
   call nz,L6C17
   call L76CB
@@ -1298,19 +1417,19 @@ L695B:
   ld b,#06
   call L6934
   call L76CB
-  ld a,(#6816)
+  ld a,(GhostFlags)
   bit 0,a
   call nz,L6BED
-  ld a,(#6816)
+  ld a,(GhostFlags)
   bit 1,a
   call nz,L6BFB
-  ld a,(#6816)
+  ld a,(GhostFlags)
   bit 2,a
   call nz,L6C09
-  ld a,(#6816)
+  ld a,(GhostFlags)
   bit 3,a
   call nz,L6C17
-  call L72FA
+  call PrintGhosts
   call L76CB
   call L6955
   ld a,(#681B)
@@ -1328,8 +1447,8 @@ L69ED:
   ld (#69A8),a
   ld (#6A37),a
   ld (#6A3F),a
-  call L72D9
-  call L72FA
+  call FlipGhost
+  call PrintGhosts
   ld a,(#6815)
   bit 4,a
   jr z,L6A13
@@ -1361,20 +1480,20 @@ L6A30:
   ld b,#06
   call L6934
   call L76CB
-  ld a,(#6816)
+  ld a,(GhostFlags)
   bit 0,a
   call nz,L6BED
-  ld a,(#6816)
+  ld a,(GhostFlags)
   bit 1,a
   call nz,L6BFB
-  ld a,(#6816)
+  ld a,(GhostFlags)
   bit 2,a
   call nz,L6C09
-  ld a,(#6816)
+  ld a,(GhostFlags)
   bit 3,a
   call nz,L6C17
   call L756D
-  call L72FA
+  call PrintGhosts
   call L7A50
   ld hl,(FRAMES)
   push hl
@@ -1403,7 +1522,7 @@ L6A8E:
   ld (FRAMES),a
   ld (FRAMES+1),a
   ld (#6817),a
-  call L72FA
+  call PrintGhosts
 L6AAC:
   ld a,(#6815)
   bit 5,a
@@ -1411,7 +1530,7 @@ L6AAC:
   xor a
   ld (#6817),a
 L6AB7:
-  call L72FA
+  call PrintGhosts
   call L76CB
   ld a,(#681B)
   cp #EC
@@ -1448,31 +1567,31 @@ L6AFB:
   jp L695B
 L6B03:
   ld a,#25
-  ld bc,(#67F0)
+  ld bc,(PacManPos)
   dec c
   jr L6B25
 L6B0C:
   ld a,#26
-  ld bc,(#67F0)
+  ld bc,(PacManPos)
   inc b
   jr L6B25
 L6B15:
   ld a,#27
-  ld bc,(#67F0)
+  ld bc,(PacManPos)
   dec b
   jr L6B25
 L6B1E:
   ld a,#28
-  ld bc,(#67F0)
+  ld bc,(PacManPos)
   inc c
 L6B25:
-  ld (#67F3),a
+  ld (PacManLastDir),a
   ld a,c
   cp #FF
   jr z,L6B8F
   cp #1F
   jr z,L6B8F
-  call L6891
+  call GetScreenChar
   push bc
   pop de
   cp #29
@@ -1492,33 +1611,41 @@ L6B25:
   cp #20
   jp nz,L6B8F
 L6B5E:
-  ld bc,(#67F0)
-  ld (#67F0),de
-  push de
-  call PrintAt
-  ld a,#20
-  rst #10
+  ld bc,(PacManPos)    ; BC = the last position of Pac-Man
+  ld (PacManPos),de    ; Store the new position of Pac-Man
+  push de              ; Save the new position
+  call PrintAt 
+  ld a,' '     
+  rst #10              ; Print a space to the last position
   pop bc
-  push bc
-  call L72BB
+  push bc              ; BC = new position
+  call SetNormalPacMan
   pop bc
-L6B73:
-  call PrintAt
-  ld bc,#0006
-  call L68B9
-  ld a,(#67F3)
-  ld (#67F2),a
-  rst #10
+
+; Displays Pac-Man to the position specified in BC
+; IN:
+;   B: row position
+;   C: column position
+; Remark Stores the previous Pac-Man symbol as the current
+ShowPacMan:
+  call PrintAt         ; PRINT AT -- Pac-Man position
+  ld bc,#0006     
+  call SetPrintColor   ; PAPER BLACK, INK YELLOW
+  ld a,(PacManLastDir) ; A = last Pac-Man symbol
+  ld (PacManDir),a     ; Store as the current symbol
+  rst #10              ; Print Pac-Man
   ret
+
+;
 L6B84:
   ld a,(#6815)
   bit 5,a
   jp z,L6FF5
   jp L6F14
 L6B8F:
-  ld bc,(#67F0)
-  ld a,(#67F2)
-  ld (#67F3),a
+  ld bc,(PacManPos)
+  ld a,(PacManDir)
+  ld (PacManLastDir),a
   cp #25
   jr z,L6BA7
   cp #26
@@ -1546,7 +1673,7 @@ L6BB7:
   jr nz,L6BBF
   ld c,#00
 L6BBF:
-  call L6891
+  call GetScreenChar
   push bc
   pop de
   cp #29
@@ -1566,131 +1693,142 @@ L6BBF:
   cp #20
   ret nz
   jp L6B5E
+
 L6BED:
-  ld ix,#67F4
-  ld a,(#6816)
+  ld ix,Ghost0State
+  ld a,(GhostFlags)
   bit 0,a
   jr z,L6C25
   jp L73CC
 L6BFB:
-  ld ix,#67FC
-  ld a,(#6816)
+  ld ix,Ghost1State
+  ld a,(GhostFlags)
   bit 1,a
   jr z,L6C25
   jp L73CC
 L6C09:
-  ld ix,#6804
-  ld a,(#6816)
+  ld ix,Ghost2State
+  ld a,(GhostFlags)
   bit 2,a
   jr z,L6C25
   jp L73CC
 L6C17:
-  ld ix,#680C
-  ld a,(#6816)
+  ld ix,Ghost3State
+  ld a,(GhostFlags)
   bit 3,a
   jr z,L6C25
   jp L73CC
+
+; Now, IX points to the beginning of ghost state
 L6C25:
-  ld l,(ix+#00)
-  ld h,(ix+#01)
-  ld a,#0A
-  cp h
-  jr z,L6C32
-  inc a
-  cp h
-L6C32:
-  call z,L7071
+  ld l,(ix+#00)        ; L=Ghost column
+  ld h,(ix+#01)        ; H=Ghost row
+  ld a,#0A             
+  cp h                 ; Is the gost in row 10?
+  jr z,`row10          ; Yes, jump
+  inc a                
+  cp h                 ; Is the ghost in row 11?
+`row10:
+  call z,L7071         ; Invoke if ghost is in row 10 or 11
   nop
   call L7682
   ld a,(#6815)
   bit 5,a
   jr nz,L6C52
-  ld a,(#67F0)
+  ld a,(PacManPos)
   sub (ix+#00)
   jp z,L727E
-  ld a,(#67F1)
+  ld a,(PacManPos+1)
   sub (ix+#01)
   jp z,L7299
 L6C52:
   ld a,(FRAMES)
   bit 3,a
   jr nz,L6CAE
+
+; Check the vertical movement of the ghost
 L6C59:
-  ld c,(ix+#00)
-  ld b,(ix+#01)
+  ld c,(ix+#00)        ; C=Ghost column
+  ld b,(ix+#01)        ; B=Ghost row
   ld a,c
-  cp #FF
-  jr z,L6CAE
-  cp #1F
-  jr z,L6CAE
-  ld a,b
-  sub (ix+#02)
-  ld b,a
-  call L6891
-  ld d,a
-  ld a,(#67F2)
-  cp d
+  cp #FF               ; Is column set to -1?
+  jr z,L6CAE           ; Yes, jump
+  cp #1F               ; Is column set to 31?
+  jr z,L6CAE           ; Yes, jump
+  ld a,b               
+  sub (ix+#02)         ; Row velicity
+  ld b,a               ; B=new row modified with velocity
+  call GetScreenChar   ; Get the character at the new ghost position
+  ld d,a               ; Save the character
+  ld a,(PacManDir)     ; This is the current Pac-Man character
+  cp d                 ; Did the ghost catch Pac-Man?
+  ld a,d               ; Restore the character
+  jp z,L6D0D           ; Jump, if so
+  cp #4C               ; Power pill?
+  jp z,L6D0D           ; Jump, if so
+  cp #4B               ; Dot?
+  jp z,L6D0D           ; Jump, if so
+  cp #20               ; Space?
+  jp z,L6D0D           ; Jump, if so
+  cp #29               ; Ghost?
+  jp z,L6D0D           ; Jump, if so
+  cp #76               ; Ghost A?
+  jp z,L6D0D           ; Jump, if so
+  cp #77               ; Ghost B?
+  jp z,L6D0D           ; Jump, if so
+  cp #2B               ; Soul?
+  jp z,L6D0D           ; Jump, if so
+  cp #2C               ; Cherry?
+  jp z,L6D0D           ; Jump, if so
+  cp #2A               ; Door?
+  jr nz,L6CAE          ; Nothing that would need special treatement
+
+; At this point we check the door
+  ld h,(ix+#01)        ; Get row coordinate
+  ld a,#0B             
+  cp h                 ; Is the ghost inside the door?
   ld a,d
-  jp z,L6D0D
-  cp #4C
-  jp z,L6D0D
-  cp #4B
-  jp z,L6D0D
-  cp #20
-  jp z,L6D0D
-  cp #29
-  jp z,L6D0D
-  cp #76
-  jp z,L6D0D
-  cp #77
-  jp z,L6D0D
-  cp #2B
-  jp z,L6D0D
-  cp #2C
-  jp z,L6D0D
-  cp #2A
-  jr nz,L6CAE
-  ld h,(ix+#01)
-  ld a,#0B
-  cp h
-  ld a,d
-  jr z,L6D0D
+  jr z,L6D0D           ; No, handle it the normal way
+
+; Check the horizontal movement of ghost
 L6CAE:
-  ld c,(ix+#00)
-  ld b,(ix+#01)
-  ld a,c
-  sub (ix+#03)
-  ld c,a
-  cp #FF
-  jr nz,L6CBF
-  ld c,#1E
-L6CBF:
-  cp #1F
-  jr nz,L6CC5
-  ld c,#00
+  ld c,(ix+#00)        ; C=ghost column
+  ld b,(ix+#01)        ; B=ghost row
+  ld a,c               
+  sub (ix+#03)         
+  ld c,a               ; C=new ghost column position 
+  cp #FF               ; Is it -1 (the ghost leaves at the left edge)?
+  jr nz,`checkLeft          ; No, go on.
+  ld c,#1E             ; Yes, set to to 30 (the ghost comes back on the right) 
+`checkLeft:
+  cp #1F               ; Is it 31 (the ghost leaves at the right edge)
+  jr nz,L6CC5          ; No, go on.
+  ld c,#00             ; Yes, set to 0 (the ghost comes back on the left)
+
+; At this point BC contains the new ghost position
 L6CC5:
-  call L6891
-  ld d,a
-  ld a,(#67F2)
-  cp d
-  ld a,d
-  jr z,L6D14
-  cp #4C
-  jr z,L6D14
-  cp #4B
-  jr z,L6D14
-  cp #20
-  jr z,L6D14
-  cp #29
-  jr z,L6D14
-  cp #76
-  jr z,L6D14
-  cp #77
-  jr z,L6D14
-  cp #2B
-  jr z,L6D14
-  cp #2C
-  jr z,L6D14
+  call GetScreenChar   ; A=character in the new ghost position
+  ld d,a               ; Save to D
+  ld a,(PacManDir)     ; Get the current Pac-Man character
+  cp d                 ; Did the ghost catch Pac-Man?
+  ld a,d               ; Restore the character
+  jr z,L6D14           ; Jump, if so
+  cp #4C               ; Power pill?
+  jr z,L6D14           ; Jump, if so
+  cp #4B               ; Dot?
+  jr z,L6D14           ; Jump, if so
+  cp #20               ; Space?
+  jr z,L6D14           ; Jump, if so
+  cp #29               ; Ghost?
+  jr z,L6D14           ; Jump, if so
+  cp #76               ; Ghost A?
+  jr z,L6D14           ; Jump, if so
+  cp #77               ; Ghost B?
+  jr z,L6D14           ; Jump, if so
+  cp #2B               ; Soul?
+  jr z,L6D14           ; Jump, if so
+  cp #2C               ; Cherry?
+  jr z,L6D14           ; Jump, if so
   ld a,(ix+#04)
   cp #00
   jr z,L6D02
@@ -1699,21 +1837,26 @@ L6CC5:
   inc a
   ld (ix+#02),a
   jp L705D
+
+; Turns back the ghost
 L6D02:
-  ld a,(ix+#03)
+  ld a,(ix+#03)        ; Obtain ghost velocity
   cpl
-  inc a
-  ld (ix+#03),a
+  inc a                ; Negate it
+  ld (ix+#03),a        ; Store back
   jp L6C59
+
 L6D0D:
   push af
   xor a
   ld (ix+#04),a
   jr L6D1A
+
 L6D14:
   push af
   ld a,#01
   ld (ix+#04),a
+
 L6D1A:
   push bc
   call PrintAt
@@ -1722,7 +1865,7 @@ L6D1A:
   jr nz,L6D32
   ld b,#00
   ld c,(ix+#06)
-  call L68B9
+  call SetPrintColor
   ld a,#29
   rst #10
   jr L6D44
@@ -1734,7 +1877,7 @@ L6D32:
 L6D3B:
   ld bc,#0007
 L6D3E:
-  call L68B9
+  call SetPrintColor
   ld a,#29
   rst #10
 L6D44:
@@ -1788,13 +1931,13 @@ L6D9C:
 L6DA1:
   ld bc,#0006
 L6DA4:
-  call L68B9
+  call SetPrintColor
   pop af
   rst #10
   pop af
   ld (ix+#05),a
   ld d,a
-  ld a,(#67F2)
+  ld a,(PacManDir)
   cp d
   jr z,L6DCA
   ld a,d
@@ -1810,24 +1953,28 @@ L6DA4:
 L6DCA:
   ld a,#20
   ld (ix+#05),a
-  ld bc,(#67F0)
-  call L6B73
+  ld bc,(PacManPos)
+  call ShowPacMan
   ld a,(#6815)
   bit 5,a
   jr nz,L6DE1
   pop bc
   jp L6FF9
 L6DE1:
-  ld bc,(#67F0)
-  call L6B73
+  ld bc,(PacManPos)
+  call ShowPacMan
   jp L6F17
+
+; seems to be unused
   nop
   nop
   nop
   nop
   nop
+
+;
 L6DF0:
-  ld a,(#67F1)
+  ld a,(PacManPos+1)
   sub (ix+#01)
   jp p,L6DFB
   cpl
@@ -1835,7 +1982,7 @@ L6DF0:
 L6DFB:
   cp #0F
   ret nc
-  ld a,(#67F0)
+  ld a,(PacManPos)
   sub (ix+#00)
   jp p,L6E09
   cpl
@@ -1847,7 +1994,7 @@ L6E09:
   xor a
   sub (ix+#04)
   jr z,L6E27
-  ld a,(#67F1)
+  ld a,(PacManPos+1)
   cp (ix+#01)
   jr c,L6E21
   ld a,#FF
@@ -1858,7 +2005,7 @@ L6E23:
   ld (ix+#02),a
   ret
 L6E27:
-  ld a,(#67F0)
+  ld a,(PacManPos)
   cp (ix+#00)
   jr c,L6E33
   ld a,#FF
@@ -1868,6 +2015,7 @@ L6E33:
 L6E35:
   ld (ix+#03),a
   ret
+
 L6E39:
   ld bc,#6EAC
   ld a,(#6815)
@@ -1880,7 +2028,7 @@ L6E39:
 L6E49:
   push ix
   pop de
-  ld hl,#67F4
+  ld hl,Ghost0State
   and a
   sbc hl,de
   jr nz,L6E5C
@@ -1890,7 +2038,7 @@ L6E49:
   set 0,a
   jr L6E8A
 L6E5C:
-  ld hl,#67FC
+  ld hl,Ghost1State
   and a
   sbc hl,de
   jr nz,L6E6C
@@ -1900,7 +2048,7 @@ L6E5C:
   set 1,a
   jr L6E8A
 L6E6C:
-  ld hl,#6804
+  ld hl,Ghost2State
   and a
   sbc hl,de
   jr nz,L6E7C
@@ -1910,7 +2058,7 @@ L6E6C:
   set 2,a
   jr L6E8A
 L6E7C:
-  ld hl,#680C
+  ld hl,Ghost3State
   and a
   sbc hl,de
   jr nz,L6E9B
@@ -1938,7 +2086,11 @@ L6EA4:
   cp #16
   jp z,L6B03
   jp L7A59
-  nop
+
+; Some Data
+// $6EAC
+  .defb #00
+
 L6EAD:
   call L6B5E
 L6EB0:
@@ -1950,7 +2102,7 @@ L6EB7:
   ld bc,#0006
   call PrintAt
   pop hl
-  call L68C4
+  call PrintScore
   ld (CurrentScore),hl
   call L795D
   ld a,(#681B)
@@ -1965,7 +2117,7 @@ L6ED5:
   xor a
   ld (#681B),a
   ld bc,#0028
-  ld de,#67F0
+  ld de,PacManPos
   ld hl,#67C0
   ldir
   ret
@@ -1992,18 +2144,19 @@ StartInit:
   call DelayForB
   djnz `DelayLoop
   jp Init
+
 L6F14:
   call L6B5E
 L6F17:
-  ld ix,#67F4
-  ld a,(#6816)
+  ld ix,Ghost0State
+  ld a,(GhostFlags)
   ld b,#04
 L6F20:
   push bc
   sra a
   push af
   jr c,L6F3A
-  ld bc,(#67F0)
+  ld bc,(PacManPos)
   ld l,(ix+#00)
   ld h,(ix+#01)
   and a
@@ -2017,9 +2170,9 @@ L6F3A:
   pop af
   pop bc
   djnz L6F20
-  ld a,(#6816)
+  ld a,(GhostFlags)
   res 7,a
-  ld (#6816),a
+  ld (GhostFlags),a
   ret
 L6F4C:
   push ix
@@ -2033,11 +2186,11 @@ L6F4C:
   pop af
   cp #4B
   jr nz,L6F7B
-  ld a,(#6816)
+  ld a,(GhostFlags)
   bit 7,a
   jr nz,L6F7B
   set 7,a
-  ld (#6816),a
+  ld (GhostFlags),a
   ld a,(#681B)
   inc a
   ld (#681B),a
@@ -2063,51 +2216,51 @@ L6F7B:
   call PrintAt
   pop hl
   ld (CurrentScore),hl
-  call L68C4
+  call PrintScore
   call L795D
   pop de
-  ld hl,#67F4
+  ld hl,Ghost0State
   and a
   sbc hl,de
   jr nz,L6FB1
-  ld a,(#6816)
+  ld a,(GhostFlags)
   set 0,a
   jr L6FDB
 L6FB1:
-  ld hl,#67FC
+  ld hl,Ghost1State
   and a
   sbc hl,de
   jr nz,L6FC0
-  ld a,(#6816)
+  ld a,(GhostFlags)
   set 1,a
   jr L6FDB
 L6FC0:
-  ld hl,#6804
+  ld hl,Ghost2State
   and a
   sbc hl,de
   jr nz,L6FCF
-  ld a,(#6816)
+  ld a,(GhostFlags)
   set 2,a
   jr L6FDB
 L6FCF:
-  ld hl,#680C
+  ld hl,Ghost3State
   and a
   sbc hl,de
   ret nz
-  ld a,(#6816)
+  ld a,(GhostFlags)
   set 3,a
 L6FDB:
-  ld (#6816),a
+  ld (GhostFlags),a
   ret
 L6FDF:
-  ld hl,#67F4
+  ld hl,Ghost0State
 L6FE2:
   push hl
   ld c,(hl)
   inc hl
   ld b,(hl)
-  call L6891
-  ld hl,#67F2
+  call GetScreenChar
+  ld hl,PacManDir
   cp (hl)
   pop hl
   ret z
@@ -2120,7 +2273,7 @@ L6FF5:
 L6FF9:
   call L7511
   push hl
-  ld hl,#67F4
+  ld hl,Ghost0State
   ld b,#04
 L7002:
   push bc
@@ -2151,7 +2304,7 @@ L7022:
   ld a,#20
 L702B:
   push af
-  call L68B9
+  call SetPrintColor
   pop af
   rst #10
   inc hl
@@ -2163,7 +2316,7 @@ L702B:
   call L7355
   ld bc,#0028
   ld hl,#67C0
-  ld de,#67F0
+  ld de,PacManPos
   ldir
   ld a,(#6818)
   dec a
@@ -2176,7 +2329,7 @@ L7050:
   ld h,#5A
   ld l,a
   ld (hl),b
-  call L72FA
+  call PrintGhosts
   jp L707F
 L705D:
   ld a,(ix+#04)
@@ -2187,27 +2340,32 @@ L705D:
   ld a,#01
   ld (ix+#02),a
   jp L6D02
+
+; IN:
+;   H: Ghost row
+;   L: Ghost column
 L7071:
   ld a,#0A
-  cp l
-  ret nc
+  cp l                 
+  ret nc               ; Return if column number is less than or equal 10
   add a,a
-  cp l
+  cp l                 ; Return if column number is greater then 20
   ret c
-  ld hl,#6C59
-  ex (sp),hl
+  ld hl,L6C59
+  ex (sp),hl           ; Move position to the stack and eturn to L6C59
   ret
+;
   nop
   nop
 L707F:
-  call L72B6
-  ld bc,(#67F0)
+  call SetGapingPacMan
+  ld bc,(PacManPos)
   call PrintAt
   ld bc,#0006
-  call L68B9
+  call SetPrintColor
   ld a,#25
-  ld (#67F2),a
-  ld (#67F3),a
+  ld (PacManDir),a
+  ld (PacManLastDir),a
   rst #10
   call L7698
   ld b,#02
@@ -2219,12 +2377,16 @@ L709D:
   djnz L709D
   call L76B3
   jp L695B
-L70AC:
+
+ResetGameState:
   ld hl,#67C0
-  ld de,#67F0
+  ld de,PacManPos
   ld bc,#002E
   ldir
   ret
+
+; Playing a new game starts here. The screen is cleared at
+; this point.
 L70B8:
   xor a
   ld (#68B8),a
@@ -2237,11 +2399,11 @@ L70B8:
   ld hl,#0700
   ld (#6A74),hl
   ld (#6EEC),hl
-  ld hl,#7F70
+  ld hl,#7F70          ; Pac-Man left gaping symbol address
   ld (#72B4),hl
-  call L72B6
-  call L70AC
-  call DisplayPlayground
+  call SetGapingPacMan
+  call ResetGameState
+  call DisplayMaze
   call L7808
   call L78A5
   call L7698
@@ -2254,8 +2416,8 @@ L70F2:
   ld hl,#0014
   ld (#681C),hl
   ld a,#25
-  ld (#67F2),a
-  ld (#67F3),a
+  ld (PacManDir),a
+  ld (PacManLastDir),a
   call L695B
   ld a,#FF
   ld (#6936),a
@@ -2268,6 +2430,7 @@ L7117:
   ld hl,#7CAE
   push hl
   ret
+
   ld bc,#07CD
   ld a,h
   ld b,#17
@@ -2278,9 +2441,9 @@ L7117:
   ld (#711D),a
   cp #01
   call z,L7A73
-  ld hl,#7F70
+  ld hl,#7F70          ; Pac-Man left gaping symbol address
   ld (#72B4),hl
-  call L72B6
+  call SetGapingPacMan
   ld bc,#0100
   call PrintAt
   ld bc,#02E0
@@ -2324,7 +2487,7 @@ L7189:
   ld bc,#0008
   ldir
   pop de
-  ld hl,#67F4
+  ld hl,Ghost0State
   and a
   sbc hl,de
   jr nz,L71B9
@@ -2334,45 +2497,45 @@ L7189:
   res 0,a
   ld (#6815),a
 L71AF:
-  ld a,(#6816)
+  ld a,(GhostFlags)
   res 0,a
-  ld (#6816),a
+  ld (GhostFlags),a
   jr L7205
 L71B9:
-  ld hl,#67FC
+  ld hl,Ghost1State
   and a
   sbc hl,de
   jr nz,L71D3
   ld a,(#6815)
   res 1,a
   ld (#6815),a
-  ld a,(#6816)
+  ld a,(GhostFlags)
   res 1,a
-  ld (#6816),a
+  ld (GhostFlags),a
   jr L7205
 L71D3:
-  ld hl,#6804
+  ld hl,Ghost2State
   and a
   sbc hl,de
   jr nz,L71ED
   ld a,(#6815)
   res 2,a
   ld (#6815),a
-  ld a,(#6816)
+  ld a,(GhostFlags)
   res 2,a
-  ld (#6816),a
+  ld (GhostFlags),a
   jr L7205
 L71ED:
-  ld hl,#680C
+  ld hl,Ghost3State
   and a
   sbc hl,de
   jr nz,L7205
   ld a,(#6815)
   res 3,a
   ld (#6815),a
-  ld a,(#6816)
+  ld a,(GhostFlags)
   res 3,a
-  ld (#6816),a
+  ld (GhostFlags),a
 L7205:
   xor a
   ld (#6817),a
@@ -2391,14 +2554,15 @@ L7205:
   ld hl,#0014
   ld (#681C),hl
   ld hl,#67C4
-  ld de,#67F4
+  ld de,Ghost0State
   ld bc,#0020
   ldir
   ret
+
 L7230:
   ld (#6814),a
 L7233:
-  ld hl,#67F4
+  ld hl,Ghost0State
 L7236:
   push ix
   pop de
@@ -2448,7 +2612,7 @@ L7273:
   ld (ix+#05),a
   jp L7556
 L727E:
-  ld a,(#67F1)
+  ld a,(PacManPos+1)
   sub (ix+#01)
   ld a,(ix+#02)
   jr c,L7291
@@ -2459,111 +2623,142 @@ L7291:
   cp #FF
   jp z,L6C52
   jp L6C59
+
+; Calculate the new vertical direction of the ghost
+; to catch Pac-Man
 L7299:
-  ld a,(#67F0)
-  sub (ix+#00)
-  ld a,(ix+#03)
-  jr c,L72AC
+  ld a,(PacManPos)     ; Get the current row of Pac-Man
+  sub (ix+#00)         ; Check the relative row position of the ghost
+  ld a,(ix+#03)        ; A=current vertical direction
+  jr c,L72AC           ; Jump if ghost is below Pac-Man
   cp #01
   jp z,L6C52
   jp L6CAE
+
+; Ghost is below Pac-Man
 L72AC:
-  cp #FF
-  jp z,L6C52
-  jp L6CAE
-  ld (hl),b
-  ld a,a
-L72B6:
-  ld hl,#7F70
-  jr L72BE
-L72BB:
-  ld hl,#7F90
-L72BE:
-  ld de,#7D28
-  ld bc,#0020
+  cp #FF               ; Does the ghost move toward Pac-Man? 
+  jp z,L6C52           ; Yes, keep this direction
+  jp L6CAE             ; No, check horizontal movement
+
+; Some data
+// $72B4
+  .defw #7F70
+
+; Sets the Pac-Man symbols to the "gaping Pac-Man" set
+SetGapingPacMan:
+  ld hl,#7F70          ; Pac-Man left gaping symbol address
+  jr CopyPacmanChars
+
+; Sets the Pac-Man symbols to the "normal Pac-Man" set
+SetNormalPacMan:
+  ld hl,#7F90          ; Initial Pac-Man left symbol address
+
+; Copy the character bitmaps within the font definition
+CopyPacmanChars:
+  ld de,#7D28          ; Pac-Man left symbol address (to print)
+  ld bc,#0020          ; 32 bytes, 4 characters
   ldir
   ret
-L72C7:
+
+; Displays the gaping Pac-Man to the position specified in BC
+; IN:
+;   B: row position
+;   C: column position
+; Remark Stores the previous Pac-Man symbol as the current
+ShowGapingPacMan:
   push bc
-  call L72B6
+  call SetGapingPacMan
   pop bc
-  jp L6B73
+  jp ShowPacMan
+
 L72CF:
   ld a,(#7A8B)
   rra
-  jr c,L72B6
-  jr L72BB
-  or b
-  ld a,a
-L72D9:
-  ld hl,(#72D7)
-  push hl
-  ld de,#7D48
-  ld bc,#0008
-  push bc
-  ldir
+  jr c,SetGapingPacMan
+  jr SetNormalPacMan
+
+; Stores the address of the last printed ghost symbol
+LastGhostAddr:
+  .defw #7DB0
+
+; Flips the ghost symbol within the character set
+; to animate ghost movement
+FlipGhost:
+  ld hl,(LastGhostAddr); HL = symbol address of the last printed ghost
+  push hl              ; Save the address
+  ld de,#7D48          ; The address of ghost symbol to print
+  ld bc,#0008          ; 8 bytes in the character
+  push bc              ; Save the counter;
+  ldir                 ; Copy the character set
   pop bc
-  pop hl
+  pop hl               ; Restore regs
   add hl,bc
-  push hl
+  push hl              ; Now HL points to the new ghost symbol
   ld de,#7FC0
   and a
-  sbc hl,de
-  pop hl
-  jr nz,L72F6
-  ld hl,#7FB0
-L72F6:
-  ld (#72D7),hl
+  sbc hl,de            ; Lets check if HL points to the second ghost symbol
+  pop hl               
+  jr nz,`storeGhost    ; Yes, HL points to the second symbol
+  ld hl,#7FB0          ; Set HL to the first symbol
+`storeGhost:
+  ld (LastGhostAddr),hl
   ret
-L72FA:
-  ld hl,#67F4
-  ld a,(#6816)
-  ld b,#04
-L7302:
-  push bc
-  sra a
-  push af
-  jr c,L7339
+
+; Print ghost in their current position
+PrintGhosts:
+  ld hl,Ghost0State    ; HL points to the ghost state table
+  ld a,(GhostFlags)    ; A=ghost flags
+  ld b,#04             ; B=number of ghosts
+`nextGhost:
+  push bc              ; Save the counter
+  sra a                ; Has Pac-Man caught the current ghost?
+  push af              ; Save the status
+  jr c,`ghostCaught    ; Yes, jump ahead
+  ld c,(hl)            ; Get the column coordinate of the ghost to C
+  inc hl               ; Move to the row position
+  ld b,(hl)            ; Get the row to B
+  push hl              ; Save the pointer
+  call PrintAt         ; Set print position to the ghost
+  pop hl               ; Get back the pointer
+  ld bc,#0005          ; Add 5 to HL
+  add hl,bc            ; to reach the color offset
+  ld b,#00             ; B="PAPER BLACK"
+  ld a,(#6815)         ; Get game flags
+  bit 5,a              ; Chase mode?
+  jr nz,`chase
   ld c,(hl)
-  inc hl
-  ld b,(hl)
-  push hl
-  call PrintAt
-  pop hl
-  ld bc,#0005
-  add hl,bc
-  ld b,#00
-  ld a,(#6815)
-  bit 5,a
-  jr nz,L7320
-  ld c,(hl)
-  jr L732A
-L7320:
-  bit 6,a
-  jr nz,L7328
-  ld c,#05
-  jr L732A
-L7328:
-  ld c,#07
-L732A:
-  push hl
-  call L68B9
-  pop hl
-  ld a,#29
-  rst #10
-  inc hl
-  inc hl
-  pop af
-  pop bc
-  djnz L7302
+  jr `display
+`chase:
+  bit 6,a              ; "Catch mode is about te expire" flag set?
+  jr nz,`white         ; Yes, jump
+  ld c,#05             ; No, use CYAN ghost color
+  jr `display
+`white:
+  ld c,#07             ; WHITE ghost color 
+`display:
+  push hl              ; Save state table pointer
+  call SetPrintColor   ; Set the color of ghost to display
+  pop hl               ; Restore pointer
+  ld a,#29             ; A=Ghost symbol
+  rst #10              ; Print the ghost
+  inc hl               
+  inc hl               ; No HL points to the next ghost state record
+  pop af               ; Restore the status
+  pop bc               ; Restore counter
+  djnz `nextGhost      
   ret
-L7339:
-  ld bc,#0008
-  add hl,bc
-  pop af
-  pop bc
-  djnz L7302
+
+; Pac-Man has caught the current ghost
+`ghostCaught:
+  ld bc,#0008         ; A GHOST record is 8 bytes long
+  add hl,bc           ; Move to the next ghost record
+  pop af              ; Restore the status
+  pop bc              ; Restore counter
+  djnz `nextGhost
   ret
+
+;
 L7342:
   ld de,#0003
   ld hl,#0400
@@ -2579,10 +2774,10 @@ L734A:
   ret
 L7355:
   push hl
-  ld bc,(#67F0)
+  ld bc,(PacManPos)
   call PrintAt
   ld bc,#0006
-  call L68B9
+  call SetPrintColor
   ld a,#74
   rst #10
   ld a,#08
@@ -2612,11 +2807,14 @@ L7372:
   ld a,(hl)
   rst #10
   ret
+
+// $738e
+; Probably data/unused
   ld sp,#5D7E
   call #8000
  
  ; The loader enters the code at this point
- EntryPoint:
+EntryPoint:
   jp StartInit
   nop
   nop
@@ -2687,9 +2885,9 @@ L73FD:
   ld a,b
   sub (ix+#02)
   ld b,a
-  call L6891
+  call GetScreenChar
   ld d,a
-  ld a,(#67F2)
+  ld a,(PacManDir)
   cp d
   ld a,d
   jp z,L74A3
@@ -2725,9 +2923,9 @@ L7455:
   jr nz,L745B
   ld c,#00
 L745B:
-  call L6891
+  call GetScreenChar
   ld d,a
-  ld a,(#67F2)
+  ld a,(PacManDir)
   cp d
   ld a,d
   jr z,L74AB
@@ -2786,7 +2984,7 @@ L74C1:
   push bc
   call PrintAt
   ld bc,#0005
-  call L68B9
+  call SetPrintColor
   ld a,#2B
   rst #10
 L74CE:
@@ -2837,12 +3035,12 @@ L7521:
   push af
   ld bc,#0006
 L7528:
-  call L68B9
+  call SetPrintColor
   pop af
   rst #10
 L752D:
-  ld bc,(#67F0)
-  call L6B73
+  ld bc,(PacManPos)
+  call ShowPacMan
   pop af
   cp #29
   jp z,L7230
@@ -2853,7 +3051,7 @@ L752D:
   cp #2B
   jp z,L7230
   ld d,a
-  ld a,(#67F2)
+  ld a,(PacManDir)
   cp d
   ld a,d
   jr nz,L7553
@@ -2894,11 +3092,11 @@ L758F:
   ret
 L7595:
   call L6B5E
-  ld ix,#67F4
+  ld ix,Ghost0State
   ld b,#04
 L759E:
   push bc
-  ld bc,(#67F0)
+  ld bc,(PacManPos)
   ld l,(ix+#00)
   ld h,(ix+#01)
   and a
@@ -2907,11 +3105,11 @@ L759E:
   ld a,(ix+#05)
   cp #4B
   jr nz,L75C1
-  ld a,(#6816)
+  ld a,(GhostFlags)
   bit 7,a
   jr nz,L75C1
   set 7,a
-  ld (#6816),a
+  ld (GhostFlags),a
 L75C1:
   ld a,#20
   ld (ix+#05),a
@@ -2920,86 +3118,29 @@ L75C6:
   add ix,bc
   pop bc
   djnz L759E
-  ld a,(#6816)
+  ld a,(GhostFlags)
   bit 7,a
   ret z
   res 7,a
-  ld (#6816),a
+  ld (GhostFlags),a
   jp L6EB0
-  ld l,d
-  ld b,#14
-  ld h,#03
-  daa
-  ld a,#04
-  dec e
-  ld l,d
-  ld b,#14
-  ld h,#03
-  ld l,c
-  ld a,#04
-  ld a,(#0000)
-  ld a,(bc)
-  inc c
-  ld b,#15
-  rst #30
-  ld (bc),a
-  ld hl,(#03FF)
-  rra
-  inc c
-  ld b,#15
-  rst #30
-  ld (bc),a
-  ld l,a
-  rst #38
-  inc bc
-  ld a,#00
-  nop
-  ld a,(bc)
-  ld l,d
-  ld b,#14
-  ld h,#03
-  daa
-  ld a,#04
-  dec e
-  ld l,d
-  ld b,#14
-  ld h,#03
-  ld l,c
-  ld a,#04
-  ld a,(#0000)
-  ld a,(bc)
-  rst #00
-  inc b
-  ld a,(de)
-  add a,b
-  inc b
-  inc e
-  ld a,#04
-  dec e
-  nop
-  nop
-  ld a,(bc)
-  ld a,#04
-  dec e
-  rst #38
-  inc bc
-  rra
-  call nz,#2103
-  nop
-  nop
-  ld a,(bc)
-  call nz,#2103
-  adc a,h
-  inc bc
-  inc hl
-  ld e,b
-  inc bc
-  dec h
-  nop
-  nop
-  ld a,(bc)
-  ld h,#03
-  ld l,c
+
+; Some data
+// $75DC
+  .defb #6A, #06, #14, #26, #03, #27, #3E, #04
+  .defb #1D, #6A, #06, #14, #26, #03, #69, #3E
+  .defb #04, #3A, #00, #00, #0A, #0C, #06, #15
+  .defb #F7, #02, #2A, #FF, #03, #1F, #0C, #06
+  .defb #15, #F7, #02, #6F, #FF, #03, #3E, #00
+  .defb #00, #0A, #6A, #06, #14, #26, #03, #27
+  .defb #3E, #04, #1D, #6A, #06, #14, #26, #03
+  .defb #69, #3E, #04, #3A, #00, #00, #0A, #C7
+  .defb #04, #1A, #80, #04, #1C, #3E, #04, #1D
+  .defb #00, #00, #0A, #3E, #04, #1D, #FF, #03
+  .defb #1F, #C4, #03, #21, #00, #00, #0A, #C4
+  .defb #03, #21, #8C, #03, #23, #58, #03, #25
+  .defb #00, #00, #0A, #26, #03, #69
+
 L7642:
   ld ix,#75DC
   ld b,#22
@@ -3054,7 +3195,7 @@ L7698:
   ld bc,#0D0D
   call PrintAt
   ld bc,#0007
-  call L68B9
+  call SetPrintColor
   ld de,#76C3
   ld bc,#0006
   call PR_STRING
@@ -3072,21 +3213,22 @@ L76BB:
   pop bc
   djnz L76BB
   ret
-  ld d,l
-  ld d,(hl)
-  ld d,a
-  ld e,b
-  ld e,c
-  ld hl,#771A
+
+; Some data 
+// $76c3
+  .defb #55, #56, #57, #58, #59, #21
+// $77C9
+  .defb #26, #77
+
 L76CB:
-  ld a,(#6816)
+  ld a,(GhostFlags)
   cp #00
   jp nz,L798D
   ld a,(#6815)
   bit 5,a
   ret nz
-  ld ix,(#76C9)
-  ld l,(ix+#00)
+  ld ix,(#76C9)        ; IX points to the current sound sample
+  ld l,(ix+#00)        ; 
   ld h,(ix+#01)
   ld d,#00
   ld e,(ix+#02)
@@ -3096,7 +3238,7 @@ L76CB:
   push ix
   call BEEPER
   pop bc
-  ld hl,#7738
+  ld hl,GOSampleAddr
   and a
   sbc hl,bc
   jr nz,L7703
@@ -3106,111 +3248,66 @@ L76CB:
 L7703:
   ld (#76C9),bc
   ret
-  ld h,#03
-  ld (bc),a
-  rlc d
-  ld (bc),a
-  ld a,d
-  ld (bc),a
-  inc bc
-  ld sp,#0302
-  ret p
-  ld bc,#B804
-  ld bc,#8404
-  ld bc,#5605
-  ld bc,#2D05
-  ld bc,#5606
-  ld bc,#8405
-  ld bc,#B805
-  ld bc,#F004
-  ld bc,#3104
-  ld (bc),a
-  inc bc
-  ld a,d
-  ld (bc),a
-  inc bc
-  rlc d
-  ld (bc),a
-  ld l,a
-  ld (hl),a
+
+; Some data 
+// $7708
+
+GameSoundSamples:
+  .defb #26, #03, #02, #CB, #02, #02, #7A, #02
+  .defb #03, #31, #02, #03, #F0, #01, #04, #B8
+  .defb #01, #04, #84, #01, #05, #56, #01, #05
+  .defb #2D, #01, #06, #56, #01, #05, #84, #01
+  .defb #05, #B8, #01, #04, #F0, #01, #04, #31
+  .defb #02, #03, #7A, #02, #03, #CB, #02, #02
+
+; Stores the pointer to the next game over sound sample
+; to play
+// $7738
+GOSampleAddr:
+  .defw #776F
+
 L773A:
-  ld ix,(#7738)
-  ld b,#04
-L7740:
+  ld ix,(GOSampleAddr)
+  ld b,#04             ; Play every sample for times
+`loop:
   push bc
-  ld l,(ix+#00)
+  ld l,(ix+#00)        ; Get the frequency value into HL
   ld h,(ix+#01)
-  ld de,#0015
-  inc ix
-  inc ix
+  ld de,#0015          ; Get duration value
+  inc ix               
+  inc ix               ; Move to the next sample
+  push ix              ; Save sample address
+  call BEEPER          ; Make the beep
+  pop ix               ; Restore sample address
+  pop bc               ; Restore sample
+  djnz `loop           ; and loop until counter is zero
   push ix
-  call BEEPER
-  pop ix
-  pop bc
-  djnz L7740
-  push ix
-  pop de
-  ld hl,#77AF
+  pop de               ; DE point to the next sample address
+  ld hl,EndOfGOSample  ; HL points to the end of sample stream
   and a
-  sbc hl,de
-  jr nz,L776A
-  ld hl,#776F
-  ld (#7738),hl
+  sbc hl,de            ; Check if this address reached
+  jr nz,`nextSample    ; No, there are other samples
+  ld hl,GOSample ; Reset the sample stream
+  ld (GOSampleAddr),hl
   ret
-L776A:
-  ld (#7738),de
+`nextSample:
+  ld (GOSampleAddr),de
   ret
-  djnz #7773
-  call pe,#E201
-  ld bc,#01FB
-  ld sp,#6C02
-  ld (bc),a
-  adc a,l
-  ld (bc),a
-  ld a,a
-  ld (bc),a
-  ld d,h
-  ld (bc),a
-  inc l
-  ld (bc),a
-  jr nz,L7787
-  dec a
-  ld (bc),a
-L7787:
-  ld a,c
-  ld (bc),a
-  cp h
-  ld (bc),a
-  pop hl
-  ld (bc),a
-  pop de
-  ld (bc),a
-  and c
-  ld (bc),a
-  ld (hl),h
-  ld (bc),a
-  ld h,a
-  ld (bc),a
-  add a,a
-  ld (bc),a
-  rlc d
-  dec d
-  inc bc
-  ld a,#03
-  dec l
-  inc bc
-  rst #30
-  ld (bc),a
-  call nz,#B602
-  ld (bc),a
-  jp c,#2602
-  inc bc
-  ld a,d
-  inc bc
-  xor b
-  inc bc
-  sub l
-  inc bc
+
+; Samples for the Game Over sound
+// $776f
+GOSample:
+  .defb #10, #02, #EC, #01, #E2, #01, #FB, #01
+  .defb #31, #02, #6C, #02, #8D, #02, #7F, #02
+  .defb #54, #02, #2C, #02, #20, #02, #3D, #02
+  .defb #79, #02, #BC, #02, #E1, #02, #D1, #02
+  .defb #A1, #02, #74, #02, #67, #02, #87, #02
+  .defb #CB, #02, #15, #03, #3E, #03, #2D, #03
+  .defb #F7, #02, #C4, #02, #B6, #02, #DA, #02
+  .defb #26, #03, #7A, #03, #A8, #03, #95, #03
+EndOfGOSample:
+
+
 L77AF:
   ld b,#02
 L77B1:
@@ -3253,16 +3350,16 @@ L77E1:
 L77E7:
   push bc
   push hl
-  ld bc,(#67F0)
+  ld bc,(PacManPos)
   call PrintAt
   ld b,#00
   pop hl
   push hl
   ld c,(hl)
-  call L68B9
+  call SetPrintColor
   ld a,#29
   rst #10
-  call L72D9
+  call FlipGhost
   ld b,#40
   call L6934
   pop hl
@@ -3302,16 +3399,16 @@ L7832:
   ld a,#3D
 L7834:
   push af
-  ld bc,(#67F0)
+  ld bc,(PacManPos)
   call PrintAt
   push bc
   ld bc,#0007
-  call L68B9
+  call SetPrintColor
   pop bc
   pop af
   rst #10
   inc c
-  call L6891
+  call GetScreenChar
   ld (#786B),a
   ld a,#3E
   rst #10
@@ -3333,7 +3430,7 @@ L786C:
   ld b,#00
   ld a,(#78A4)
   ld c,a
-  call L68B9
+  call SetPrintColor
   ld a,#2C
   rst #10
   ret
@@ -3343,6 +3440,8 @@ L787F:
   ld a,#20
   rst #10
   ret
+
+; Some data
   ret c
   ld a,(hl)
   ld (bc),a
@@ -3466,7 +3565,7 @@ L7944:
   ld bc,#0006
   call PrintAt
   pop hl
-  call L68C4
+  call PrintScore
   call L795D
   ret
 L795D:
@@ -3515,7 +3614,7 @@ L798D:
   inc bc
   inc bc
   inc bc
-  ld hl,#7738
+  ld hl,GOSampleAddr
   and a
   sbc hl,bc
   push bc
@@ -3529,101 +3628,26 @@ L79BE:
   ld bc,#0019
   call PrintAt
   ld hl,(#681E)
-  call L68C4
+  call PrintScore
   ret
-  rst #00
-  inc b
-  inc (hl)
-  rst #00
-  inc b
-  inc (hl)
-  rst #00
-  inc b
-  inc (hl)
-  or h
-  dec b
-  ld d,#6A
-  ld b,#14
-  rst #00
-  inc b
-  inc (hl)
-  rst #00
-  inc b
-  inc (hl)
-  call nz,#4203
-  nop
-  nop
-  jr nz,#79AE
-  inc b
-  inc (hl)
-  rst #00
-  inc b
-  inc (hl)
-  rst #00
-  inc b
-  inc (hl)
-  or h
-  dec b
-  ld d,#6A
-  ld b,#14
-  rst #00
-  inc b
-  inc (hl)
-  rst #00
-  inc b
-  inc (hl)
-  or h
-  dec b
-  inc l
-  nop
-  nop
-  jr nz,#79C9
-  inc b
-  inc (hl)
-  rst #00
-  inc b
-  inc (hl)
-  rst #00
-  inc b
-  inc (hl)
-  or h
-  dec b
-  ld d,#6A
-  ld b,#14
-  rst #00
-  inc b
-  inc (hl)
-  rst #00
-  inc b
-  inc (hl)
-  rst #38
-  inc bc
-  ld a,#C4
-  inc bc
-  ld b,d
-  adc a,h
-  inc bc
-  ld b,(hl)
-  ld e,b
-  inc bc
-  ld c,d
-  adc a,h
-  inc bc
-  ld b,(hl)
-  call nz,#4203
-  rst #38
-  inc bc
-  ld a,#C7
-  inc b
-  inc (hl)
-  rst #38
-  inc bc
-  ld a,#C7
-  inc b
-  inc (hl)
-  nop
-  nop
-  ld b,b
+
+; Some data
+// $79cb
+  .defb #C7, #04, #34, #C7, #04, #34, #C7, #04
+  .defb #34, #B4, #05, #16, #6A, #06, #14, #C7
+  .defb #04, #34, #C7, #04, #34, #C4, #03, #42
+  .defb #00, #00, #20, #C7, #04, #34, #C7, #04
+  .defb #34, #C7, #04, #34, #B4, #05, #16, #6A
+  .defb #06, #14, #C7, #04, #34, #C7, #04, #34
+  .defb #B4, #05, #2C, #00, #00, #20, #C7, #04
+  .defb #34, #C7, #04, #34, #C7, #04, #34, #B4
+  .defb #05, #16, #6A, #06, #14, #C7, #04, #34
+  .defb #C7, #04, #34, #FF, #03, #3E, #C4, #03
+  .defb #42, #8C, #03, #46, #58, #03, #4A, #8C
+  .defb #03, #46, #C4, #03, #42, #FF, #03, #3E
+  .defb #C7, #04, #34, #FF, #03, #3E, #C7, #04
+  .defb #34, #00, #00, #40
+
 L7A37:
   ld ix,#79CB
   ld b,#24
@@ -3672,7 +3696,7 @@ L7A73:
   ld bc,#0E20
 L7A8D:
   call L72CF
-  call L72D9
+  call FlipGhost
   ld a,(#7A8A)
   cp #01
   jr z,L7AF2
@@ -3687,7 +3711,7 @@ L7A8D:
   push bc
   call PrintAt
   ld bc,#0006
-  call L68B9
+  call SetPrintColor
   ld a,#25
   rst #10
   pop bc
@@ -3712,7 +3736,7 @@ L7ACA:
   push bc
   call PrintAt
   ld bc,#0002
-  call L68B9
+  call SetPrintColor
   ld a,#29
   rst #10
   pop bc
@@ -3756,7 +3780,7 @@ L7B18:
   push bc
   call PrintAt
   ld bc,#0006
-  call L68B9
+  call SetPrintColor
   ld a,#41
   rst #10
   pop bc
@@ -3764,7 +3788,7 @@ L7B18:
   dec b
   call PrintAt
   ld bc,#0006
-  call L68B9
+  call SetPrintColor
   ld a,#3F
   rst #10
   pop bc
@@ -3778,7 +3802,7 @@ L7B3F:
   push bc
   call PrintAt
   ld bc,#0006
-  call L68B9
+  call SetPrintColor
   ld a,#42
   rst #10
   pop bc
@@ -3786,7 +3810,7 @@ L7B3F:
   dec b
   call PrintAt
   ld bc,#0006
-  call L68B9
+  call SetPrintColor
   ld a,#40
   rst #10
   pop bc
@@ -3810,7 +3834,7 @@ L7B77:
   ret nc
   call PrintAt
   ld bc,#0005
-  call L68B9
+  call SetPrintColor
   ld a,#29
   rst #10
   ret
@@ -3839,7 +3863,7 @@ L7BAF:
   ld a,(#6815)
   bit 5,a
   ret z
-  ld a,(#6816)
+  ld a,(GhostFlags)
   cp #00
   ret nz
   ld hl,#0300
@@ -3929,7 +3953,7 @@ L7C31:
   djnz L7C09
   ret
 L7C42:
-  ld a,(#6816)
+  ld a,(GhostFlags)
   cp #00
   jr nz,L7C4F
   ld a,#FF
@@ -3973,9 +3997,9 @@ Init:
   ld (#78A3),a
   ld hl,#7889
   ld (#78A1),hl
-  call L70AC
+  call ResetGameState
   call ClearScreen
-  call DisplayPlayground
+  call DisplayMaze
   call L7808
   call L78A5
   ld hl,#7851
@@ -4000,7 +4024,7 @@ L7CC1:
   push hl
   call PrintAt
   ld bc,#0005
-  call L68B9
+  call SetPrintColor
   pop hl
   ld b,#03
 L7CD2:
@@ -4014,11 +4038,11 @@ L7CD2:
   inc hl
   push hl
   ex de,hl
-  ld b,#04
-L7CDF:
-  ld a,#20
-  rst #10
-  djnz L7CDF
+  ld b,#04             ; Set counter to 4
+`loop:
+  ld a,' '
+  rst #10              ; Print space
+  djnz `loop           ; Complete the loop
   call PrintHL
   ld a,#30
   rst #10
@@ -4038,7 +4062,7 @@ L7CFA:
 
 ; Character set bitmaps
   .org #7D00
-; Space
+; $20, $7D00
   .defg ........
   .defg ........
   .defg ........
@@ -4047,16 +4071,16 @@ L7CFA:
   .defg ........
   .defg ........
   .defg ........
-; !
+; $21, $7D08
   .defg ........
+  .defg ...X....
   .defg ...X....
   .defg ...X....
   .defg ...X....
-  .defg ...X....
   .defg ........
   .defg ...X....
   .defg ........
-; Small 1
+; $22, $7D10
   .defg ........
   .defg .....X..
   .defg .....X..
@@ -4065,7 +4089,7 @@ L7CFA:
   .defg .....X..
   .defg .....X..
   .defg ........
-; Small 3
+; $23, $7D18
   .defg ........
   .defg ..XXXX..
   .defg .....X..
@@ -4074,7 +4098,7 @@ L7CFA:
   .defg .....X..
   .defg ..XXXX..
   .defg ........
-; Small 5
+; $24, $7D20
   .defg ........
   .defg ..XXXX..
   .defg ..X.....
@@ -4083,7 +4107,7 @@ L7CFA:
   .defg .....X..
   .defg ..XXXX..
   .defg ........
-; Pacman left
+; $25, $7D28
   .defg ..XXXX..
   .defg .XXXXXX.
   .defg XXXXXXXX
@@ -4092,7 +4116,7 @@ L7CFA:
   .defg XXXXXXXX
   .defg .XXXXXX.
   .defg ..XXXX..
-; Pacman down
+; $26, $7D30
   .defg ..XXXX..
   .defg .XXXXXX.
   .defg XXXXXXXX
@@ -4101,7 +4125,7 @@ L7CFA:
   .defg XXX.XXXX
   .defg .XX.XXX.
   .defg ..X.XX..
-; Pacman up  
+; $27, $7D38
   .defg ..XX.X..
   .defg .XXX.XX.
   .defg XXXX.XXX
@@ -4110,7 +4134,7 @@ L7CFA:
   .defg XXXXXXXX
   .defg .XXXXXX.
   .defg ..XXXX..
-; Pacman right
+; $28, $7D40
   .defg ..XXXX..
   .defg .XXXXXX.
   .defg XXXXXXXX
@@ -4119,7 +4143,7 @@ L7CFA:
   .defg XXXXXXXX
   .defg .XXXXXX.
   .defg ..XXXX..
-; Ghost
+; $29, $7D48
   .defg ..XXXX..
   .defg .XXXXXX.
   .defg X..X..XX
@@ -4128,7 +4152,7 @@ L7CFA:
   .defg XX.XX.XX
   .defg X..X..X.
   .defg X..X..X.
-; Horizontal line
+; $2A 
   .defg ........
   .defg ........
   .defg ........
@@ -4137,7 +4161,7 @@ L7CFA:
   .defg ........
   .defg ........
   .defg ........
- ; Balls
+ ; $2B
   .defg ........
   .defg ........
   .defg XXX..XXX
@@ -4146,7 +4170,7 @@ L7CFA:
   .defg ........
   .defg ........
   .defg ........
- ; Cherry 
+ ; Cherry ($2C) 
   .defg ....X...
   .defg ....X...
   .defg ...X....
@@ -4155,7 +4179,7 @@ L7CFA:
   .defg XXX.XXX.
   .defg .X...X..
   .defg ........
-; 20  
+; 20 ($2D) 
   .defg ........
   .defg XXX.XXX.
   .defg ..X.X.X.
@@ -4164,7 +4188,7 @@ L7CFA:
   .defg X...X.X.
   .defg XXX.XXX.
   .defg ........
-; 30
+; 30 ($2E)
   .defg ........
   .defg XXX.XXX.
   .defg ..X.X.X.
@@ -4173,7 +4197,7 @@ L7CFA:
   .defg ..X.X.X.
   .defg XXX.XXX.
   .defg ........
-; 50
+; 50 ($2F)
   .defg ........
   .defg XXX.XXX.
   .defg X...X.X.
@@ -4182,7 +4206,7 @@ L7CFA:
   .defg ..X.X.X.
   .defg XXX.XXX.
   .defg ........
-; 0
+; 0 ($30)
   .defg ........
   .defg ..XXXX..
   .defg .X...XX.
@@ -4191,7 +4215,7 @@ L7CFA:
   .defg .XX...X.
   .defg ..XXXX..
   .defg ........
-; 1  
+; 1 ($31)
   .defg ........
   .defg ...XX...
   .defg ..X.X...
@@ -4200,7 +4224,7 @@ L7CFA:
   .defg ....X...
   .defg ..XXXXX.
   .defg ........
-; 2
+; 2 ($32)
   .defg ........
   .defg ..XXXX..
   .defg .X....X.
@@ -4209,7 +4233,7 @@ L7CFA:
   .defg .X......
   .defg .XXXXXX.
   .defg ........
-; 3
+; 3 ($33)
   .defg ........
   .defg ..XXXX..
   .defg .X....X.
@@ -4218,7 +4242,7 @@ L7CFA:
   .defg .X....X.
   .defg ..XXXX..
   .defg ........
-; 4
+; 4 ($34)
   .defg ........
   .defg ....X...
   .defg ...XX...
@@ -4227,7 +4251,7 @@ L7CFA:
   .defg .XXXXXX.
   .defg ....X...
   .defg ........
-; 5
+; 5 ($35)
   .defg ........
   .defg .XXXXXX.
   .defg .X......
@@ -4236,7 +4260,7 @@ L7CFA:
   .defg .X....X.
   .defg ..XXXX..
   .defg ........
-; 6
+; 6 ($36)
   .defg ........
   .defg ..XXXX..
   .defg .X......
@@ -4245,7 +4269,7 @@ L7CFA:
   .defg .X....X.
   .defg ..XXXX..
   .defg ........
-; 7
+; 7 ($37)
   .defg ........
   .defg .XXXXXX.
   .defg ......X.
@@ -4254,7 +4278,7 @@ L7CFA:
   .defg ...X....
   .defg ...X....
   .defg ........
-; 8
+; 8 ($37)
   .defg ........
   .defg ..XXXX..
   .defg .X....X.
@@ -4263,7 +4287,7 @@ L7CFA:
   .defg .X....X.
   .defg ..XXXX..
   .defg ........
-; 9
+; 9 ($39)
   .defg ........
   .defg ..XXXX..
   .defg .X....X.
@@ -4272,7 +4296,7 @@ L7CFA:
   .defg ......X.
   .defg ..XXXX..
   .defg ........
-; Small 2  
+; Small 2 ($3A)  
   .defg ........
   .defg ..XXXX..
   .defg ..X..X..
@@ -4281,7 +4305,7 @@ L7CFA:
   .defg ..X.....
   .defg ..XXXX..
   .defg ........
-; Small 4
+; Small 4 ($3B)
   .defg ........
   .defg ..X.....
   .defg ..X.X...
@@ -4290,7 +4314,7 @@ L7CFA:
   .defg ....X...
   .defg ....X...
   .defg ........
-; Small 8
+; Small 8 ($3C)
   .defg ........
   .defg ..XXXX..
   .defg ..X..X..
@@ -4299,7 +4323,7 @@ L7CFA:
   .defg ..X..X..
   .defg ..XXXX..
   .defg ........
-; Small 16
+; Small 16 ($3D)
   .defg ........
   .defg .X.XXXX.
   .defg .X.X....
@@ -4308,7 +4332,7 @@ L7CFA:
   .defg .X.X..X.
   .defg .X.XXXX.
   .defg ........
-; Small 00
+; Small 00 ($3E)
   .defg ........
   .defg XXX..XXX
   .defg X.X..X.X
@@ -4317,7 +4341,7 @@ L7CFA:
   .defg X.X..X.X
   .defg XXX..XXX
   .defg ........
-; Arc top-left
+; $3F
   .defg .....XXX
   .defg ...XXXXX
   .defg ..XXXXXX
@@ -4326,7 +4350,7 @@ L7CFA:
   .defg XXXXXXXX
   .defg XXXXXXXX
   .defg XXXXXXXX
-; Arc top-right
+; $40
   .defg XXX.....
   .defg XXXXX...
   .defg XXXXXX..
@@ -4335,7 +4359,7 @@ L7CFA:
   .defg XXXXXXXX
   .defg XXXXXXXX
   .defg XXXXXXXX
-; Arc bottom-left
+; $41
   .defg XXXXXX..
   .defg XXXXXX..
   .defg XXXXXXXX
@@ -4344,7 +4368,7 @@ L7CFA:
   .defg ..XXXXXX
   .defg ...XXXXX
   .defg .....XXX
-; Arc bottom-right
+; $42
   .defg ........
   .defg ........
   .defg XXXXXXXX
@@ -4353,7 +4377,7 @@ L7CFA:
   .defg XXXXXX..
   .defg XXXXX...
   .defg XXX.....
-;
+; $43
   .defg .....XXX
   .defg ...XXXXX
   .defg ..XXXXXX
@@ -4362,7 +4386,7 @@ L7CFA:
   .defg XXXXXXXX
   .defg XXXXXXXX
   .defg XXXXXXXX
-;
+; $44
   .defg XXX.....
   .defg XXXXX...
   .defg XXXXXX..
@@ -4371,7 +4395,7 @@ L7CFA:
   .defg XXXXXXXX
   .defg XXXXXXXX
   .defg XXXXXXXX
-;
+; $45
   .defg XXXXXX..
   .defg XXXXXX..
   .defg XXXXXXXX
@@ -4380,7 +4404,7 @@ L7CFA:
   .defg ..XXXXXX
   .defg ...XXXXX
   .defg .....XXX
-;
+; $46
   .defg ........
   .defg ........
   .defg XXXXXXXX
@@ -4389,7 +4413,7 @@ L7CFA:
   .defg XXXXXX..
   .defg XXXXX...
   .defg XXX.....
-;
+; $47
   .defg .....XXX
   .defg ...XXXXX
   .defg ..XXXXXX
@@ -4398,7 +4422,7 @@ L7CFA:
   .defg XXXXXXXX
   .defg XXXXXXXX
   .defg XXXXXX..
-;
+; $48
   .defg XXX.....
   .defg XXXXX...
   .defg XXXXXXX.
@@ -4407,7 +4431,7 @@ L7CFA:
   .defg XX......
   .defg ........
   .defg ........
-;
+; $49
   .defg XXXXXX..
   .defg XXXXXXXX
   .defg XXXXXXXX
@@ -4416,7 +4440,7 @@ L7CFA:
   .defg ..XXXXXX
   .defg ...XXXXX
   .defg .....XXX
-;
+; $4A
   .defg ........
   .defg ........
   .defg XX......
@@ -4425,7 +4449,7 @@ L7CFA:
   .defg XXXXXXX.
   .defg XXXXX...
   .defg XXX.....
-;
+; $4B
   .defg ........
   .defg ........
   .defg ........
@@ -4434,7 +4458,7 @@ L7CFA:
   .defg ........
   .defg ........
   .defg ........
-;
+; $4C
   .defg ..XXXX..
   .defg ..XXXX..
   .defg XXXXXXXX
@@ -4443,7 +4467,7 @@ L7CFA:
   .defg XXXXXXXX
   .defg ..XXXX..
   .defg ..XXXX..
-;
+; $4D
   .defg ........
   .defg ..XXXX..
   .defg .....X..
@@ -4452,7 +4476,7 @@ L7CFA:
   .defg .....X..
   .defg .....X..
   .defg ........
-;
+; $4E
   .defg ........
   .defg .X.XXX..
   .defg .X.X.X..
@@ -4461,7 +4485,7 @@ L7CFA:
   .defg .X.X.X..
   .defg .X.XXX..
   .defg ........
-;
+; $4F
   .defg ........
   .defg ...X....
   .defg ..XX....
@@ -4470,7 +4494,7 @@ L7CFA:
   .defg .XXXXXX.
   .defg ..XX....
   .defg ...X....
-;
+; $50
   .defg ........
   .defg ...X....
   .defg ...XX...
@@ -4479,7 +4503,7 @@ L7CFA:
   .defg XXXXXX..
   .defg ...XX...
   .defg ...X....
-;
+; $51
   .defg ........
   .defg ...X....
   .defg ..XXX...
@@ -4488,7 +4512,7 @@ L7CFA:
   .defg ..XXX...
   .defg ..XXX...
   .defg ..XXX...
-;
+; $52
   .defg ........
   .defg ..XXX...
   .defg ..XXX...
@@ -4497,7 +4521,7 @@ L7CFA:
   .defg .XXXXX..
   .defg ..XXX...
   .defg ...X....
-;
+; $53
   .defg ........
   .defg ........
   .defg XXXX.XX.
@@ -4506,7 +4530,7 @@ L7CFA:
   .defg ...XXXXX
   .defg ....XXX.
   .defg ........
-;
+; $54
   .defg ........
   .defg ...X....
   .defg ..XXX...
@@ -4515,7 +4539,7 @@ L7CFA:
   .defg XXXXXXX.
   .defg XXXXXXX.
   .defg ...X....
-;
+; $55
   .defg ........
   .defg .XXXXX..
   .defg .X....X.
@@ -4524,7 +4548,7 @@ L7CFA:
   .defg .X...X..
   .defg .X....X.
   .defg ........
-;
+; $56
   .defg ........
   .defg .XXXXXX.
   .defg .X......
@@ -4533,7 +4557,7 @@ L7CFA:
   .defg .X......
   .defg .XXXXXX.
   .defg ........
-;
+; $57
   .defg ........
   .defg ..XXXX..
   .defg .X....X.
@@ -4542,7 +4566,7 @@ L7CFA:
   .defg .X....X.
   .defg .X....X.
   .defg ........
-;
+; $58
   .defg ........
   .defg .XXXX...
   .defg .X...X..
@@ -4551,7 +4575,7 @@ L7CFA:
   .defg .X...X..
   .defg .XXXX...
   .defg ........
-;
+; $59
   .defg ........
   .defg X.....X.
   .defg .X...X..
@@ -4560,7 +4584,7 @@ L7CFA:
   .defg ...X....
   .defg ...X....
   .defg ........
-;
+; $6A
   .defg ........
   .defg .XXXXXX.
   .defg .X....X.
@@ -4569,7 +4593,7 @@ L7CFA:
   .defg ...XX...
   .defg ...X....
   .defg ...XXX..
-;
+; $5B
   .defg ....X...
   .defg ....X...
   .defg ...X....
@@ -4578,7 +4602,7 @@ L7CFA:
   .defg XXX.XXX.
   .defg .X...X..
   .defg ........
-;
+; $5C
   .defg ...X....
   .defg .X.X.X..
   .defg X.X.X.X.
@@ -4587,7 +4611,7 @@ L7CFA:
   .defg XX.X.XX.
   .defg .XX.XX..
   .defg ..XXX...
-;
+; $5D
   .defg .......X
   .defg ..XXX.X.
   .defg .XXXXX..
@@ -4596,7 +4620,7 @@ L7CFA:
   .defg XXXXXXX.
   .defg .XXXXX..
   .defg ..XXX...
-;
+; $5E
   .defg ...X....
   .defg ...X....
   .defg .XXXXX..
@@ -4605,7 +4629,7 @@ L7CFA:
   .defg XXXXXXX.
   .defg .XXXXX..
   .defg ..XXX...
-;
+; $5F
   .defg ........
   .defg ........
   .defg ..XXX...
@@ -4614,7 +4638,7 @@ L7CFA:
   .defg .XXXXX..
   .defg ..XXX...
   .defg ........
-;
+; $60, $7F00
   .defg ........
   .defg XXXXXXXX
   .defg XXXXXXXX
@@ -4623,7 +4647,7 @@ L7CFA:
   .defg XXXXXXXX
   .defg XXXXXXXX
   .defg ........
-;
+; $61, $7F08
   .defg .XX..XX.
   .defg .XX..XX.
   .defg .XX..XX.
@@ -4632,7 +4656,7 @@ L7CFA:
   .defg .XX..XX.
   .defg .XX..XX.
   .defg .XX..XX.
-;
+; $62, $7F10
   .defg ........
   .defg ...XXXXX
   .defg ..XXXXXX
@@ -4641,7 +4665,7 @@ L7CFA:
   .defg .XX...XX
   .defg .XX..XXX
   .defg .XX..XX.
-;
+; $63, $7F18
   .defg ........
   .defg XXXXX...
   .defg XXXXXX..
@@ -4650,7 +4674,7 @@ L7CFA:
   .defg XX...XX.
   .defg XXX..XX.
   .defg .XX..XX.
-;
+; $64, $7F20
   .defg .XX..XX.
   .defg .XX..XXX
   .defg .XX...XX
@@ -4659,7 +4683,7 @@ L7CFA:
   .defg ..XXXXXX
   .defg ...XXXXX
   .defg ........
-;
+; $65, $7F28
   .defg .XX..XX.
   .defg XXX..XX.
   .defg XX...XX.
@@ -4668,7 +4692,7 @@ L7CFA:
   .defg XXXXXX..
   .defg XXXXX...
   .defg ........
-;
+; $66, $7F30
   .defg ........
   .defg ..XXXXXX
   .defg .XXXXXXX
@@ -4677,7 +4701,7 @@ L7CFA:
   .defg .XXXXXXX
   .defg ..XXXXXX
   .defg ........
-;
+; $67, $7F38
   .defg ........
   .defg XXXXXX..
   .defg XXXXXXX.
@@ -4686,7 +4710,7 @@ L7CFA:
   .defg XXXXXXX.
   .defg XXXXXX..
   .defg ........
-;
+; $68, $7F40
   .defg ........
   .defg ..XXXX..
   .defg .XXXXXX.
@@ -4695,7 +4719,7 @@ L7CFA:
   .defg .XX..XX.
   .defg .XX..XX.
   .defg .XX..XX.
-;
+; $69, $7F48
   .defg .XX..XX.
   .defg .XX..XX.
   .defg .XX..XX.
@@ -4704,7 +4728,7 @@ L7CFA:
   .defg .XXXXXX.
   .defg ..XXXX..
   .defg ........
-;
+; $6A, $7F50
   .defg .XX..XX.
   .defg XXX..XXX
   .defg XXX..XXX
@@ -4713,7 +4737,7 @@ L7CFA:
   .defg XXXXXXXX
   .defg XXXXXXXX
   .defg ........
-;
+; $6B, $7F58
   .defg ........
   .defg XXXXXXXX
   .defg XXXXXXXX
@@ -4722,7 +4746,7 @@ L7CFA:
   .defg XXX..XXX
   .defg XXX..XXX
   .defg .XX..XX.
-;
+; $6C, $7F60
   .defg .XX..XX.
   .defg .XX..XXX
   .defg .XX..XXX
@@ -4731,7 +4755,7 @@ L7CFA:
   .defg .XX..XXX
   .defg .XX..XXX
   .defg .XX..XX.
-;
+; $6D, $7F68
   .defg .XX..XX.
   .defg XXX..XX.
   .defg XXX..XX.
@@ -4740,7 +4764,7 @@ L7CFA:
   .defg XXX..XX.
   .defg XXX..XX.
   .defg .XX..XX.
-;
+; $6E, $7F70
   .defg ..XXXX..
   .defg XXXXXXX.
   .defg ..XXXXXX
@@ -4749,7 +4773,7 @@ L7CFA:
   .defg ..XXXXXX
   .defg XXXXXXX.
   .defg ..XXXX..
-;
+; $6F, $7F78
   .defg ..XXXX..
   .defg .XXXXXX.
   .defg XXXXXXXX
@@ -4758,7 +4782,7 @@ L7CFA:
   .defg XXX..XXX
   .defg .X....X.
   .defg .X....X.
-;
+; $70, $7F80
   .defg .X....X.
   .defg .X....X.
   .defg XXX..XXX
@@ -4767,7 +4791,7 @@ L7CFA:
   .defg XXXXXXXX
   .defg .XXXXXX.
   .defg ..XXXX..
-;
+; $71, $7F88
   .defg ..XXXX..
   .defg .XXXXXXX
   .defg XXXXXX..
@@ -4776,7 +4800,7 @@ L7CFA:
   .defg XXXXXX..
   .defg .XXXXXXX
   .defg ..XXXX..
-;
+; $72, $7F90
   .defg ..XXXX..
   .defg .XXXXXX.
   .defg XXXXXXXX
@@ -4785,7 +4809,7 @@ L7CFA:
   .defg XXXXXXXX
   .defg .XXXXXX.
   .defg ..XXXX..
-;
+; $73, $7F98
   .defg ..XXXX..
   .defg .XXXXXX.
   .defg XXXXXXXX
@@ -4794,7 +4818,7 @@ L7CFA:
   .defg XXX.XXXX
   .defg .XX.XXX.
   .defg ..X.XX..
-;
+; $74, $7FA0
   .defg ..XX.X..
   .defg .XXX.XX.
   .defg XXXX.XXX
@@ -4803,7 +4827,7 @@ L7CFA:
   .defg XXXXXXXX
   .defg .XXXXXX.
   .defg ..XXXX..
-;
+; $75, $7FA8
   .defg ..XXXX..
   .defg .XXXXXX.
   .defg XXXXXXXX
@@ -4812,7 +4836,7 @@ L7CFA:
   .defg XXXXXXXX
   .defg .XXXXXX.
   .defg ..XXXX..
-;
+; $76, $7FB0
   .defg ..XXXX..
   .defg .XXXXXX.
   .defg XX..X..X
@@ -4821,7 +4845,7 @@ L7CFA:
   .defg XX.XX.XX
   .defg .X..X..X
   .defg .X..X..X
-;
+; $77, $7FB8
   .defg ..XXXX..
   .defg .XXXXXX.
   .defg X..X..XX
@@ -4830,7 +4854,7 @@ L7CFA:
   .defg XX.XX.XX
   .defg X..X..X.
   .defg X..X..X.
-;
+; $78, $7FC0
   .defg ........
   .defg .X....X.
   .defg XXX..XXX
@@ -4839,7 +4863,7 @@ L7CFA:
   .defg XXXXXXXX
   .defg .XXXXXX.
   .defg ..XXXX..
-;
+; $79, $7FC8
   .defg ........
   .defg ........
   .defg X......X
@@ -4848,7 +4872,7 @@ L7CFA:
   .defg XXXXXXXX
   .defg .XXXXXX.
   .defg ..XXXX..
-;
+; $7A, $7FD0
   .defg ........
   .defg ........
   .defg ........
@@ -4857,7 +4881,7 @@ L7CFA:
   .defg XXXXXXXX
   .defg .XXXXXX.
   .defg ..XXXX..
-;
+; $7B, $7FD8
   .defg ........
   .defg ........
   .defg ........
@@ -4866,7 +4890,7 @@ L7CFA:
   .defg XXXXXXXX
   .defg .XXXXXX.
   .defg ..XXXX..
-;
+; $7C, $7FE0
   .defg ........
   .defg ........
   .defg ........
@@ -4875,7 +4899,7 @@ L7CFA:
   .defg ..XXXX..
   .defg .XXXXXX.
   .defg ..XXXX..
-;
+; $7D, $7FE8
   .defg ........
   .defg ........
   .defg ........
@@ -4884,7 +4908,7 @@ L7CFA:
   .defg ...XX...
   .defg ..XXXX..
   .defg ..XXXX..
-;
+; $7E, $7FF0
   .defg ........
   .defg ........
   .defg ........
@@ -4893,7 +4917,7 @@ L7CFA:
   .defg ........
   .defg ...XX...
   .defg ...XX...
-;
+; $7F, $7FF8
   .defg X......X
   .defg .X....X.
   .defg ..X..X..
