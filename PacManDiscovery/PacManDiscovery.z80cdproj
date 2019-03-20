@@ -10,16 +10,19 @@
     <SpConf Include="Rom\ZxSpectrum.spconf" />
     <Rom Include="Rom\ZxSpectrum48.rom" />
     <DisassAnn Include="Rom\ZxSpectrum48.disann" />
-    <Tzx Include="TapeFiles\PacManCode.tzx" />
     <Z80Asm Include="DisassemblyFiles\AutoLoad.z80asm" />
     <Z80Asm Include="DisassemblyFiles\Data.z80asm" />
     <Z80Asm Include="DisassemblyFiles\LabelChanges.z80asm" />
     <Z80Asm Include="DisassemblyFiles\LoaderPart2.z80asm" />
+    <Z80Asm Include="DisassemblyFiles\OrigPacMan.z80asm" />
     <Z80Asm Include="DisassemblyFiles\PacManCode.z80asm" />
     <Z80Asm Include="DisassemblyFiles\PacManStructs.z80asm" />
     <Z80Asm Include="Z80CodeFiles\Code.z80asm" />
     <Z80Test Include="Z80UnitTests\UnitTest.z80test" />
     <Tzx Include="TapeFiles\Pac-Man.tzx" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="MemoryFiles\PacManMemory.bin" />
   </ItemGroup>
   <Import Project="$(CustomProjectExtensionsPath)Spect.Net.CodeDiscover.targets" />
 </Project>
