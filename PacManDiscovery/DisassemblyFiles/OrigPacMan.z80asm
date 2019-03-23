@@ -1,8 +1,4 @@
-#include "PacManStructs.z80asm"
-
-; This is the entry point
-.ent EntryPoint
-.xent EntryPoint
+  .org #5B00
 
 ; External symbols
 BEEPER:
@@ -19,219 +15,154 @@ OUT_SP_NO:
   .equ #192A
 PR_STRING:
   .equ #203C
-START:
-  .equ #0000
 
-; System variables
-DF_SZ: 
-  .equ #5C6B ; The number of lines (including one blank line) in the lower part of the screen.
-FRAMES:
-  .equ #5C78 ; 3 byte (least significant first), frame counter. Incremented every 20ms.
-CHARS:
-  .equ #5C36 ; 256 less than address of character set (which starts with space and carries 
-             ; on to the copyright symbol). Normally in ROM, but you can set up your own in 
-			 ; RAM and make CHARS point to it.
-LAST_K:
-  .equ #5C08 ; Stores newly pressed key
-ATTR_P:
-  .equ #5C8D ; Permanent current colors
-
-; Pac-Man character set constants
-PM_LEFT:
-  .equ #25
-PM_RIGHT: 
-  .equ #28
-PM_UP:
-  .equ #27
-PM_DOWN:
-  .equ #26
-
-; The code starts at the beginning of the print buffer area (#5B00)
-  .org #5B00
-
-; Checks if the point in a Hi-Score table entry is greater than
-; a particular point
-; IN:
-;   IX: High score entry address
-;   DE: Point to check
-; OUT:
-;   Carry is set if the point is greater than the entry point
-CheckHsEntry:
-  ld l,(ix+#03)        ; Get the point value from the Hi-Score entry
+L5B00:
+  ld l,(ix+#03)
   ld h,(ix+#04)
-  and a                ; Reset Carry
-  sbc hl,de            ; Do the test
-  ret                  ; Return with carry set, if point greater than 
-                       ; the current entry
-
-; Waits until no key is pressed
-WaitForNoKey:
-  push bc              ; Save regs
+  and a
+  sbc hl,de
+  ret
+L5B0A:
+  push bc
   push hl
-`loop:
-  call KEY_SCAN        ; Scan the keyboard
+L5B0C:
+  call KEY_SCAN
   ld a,#FF
-  cp e                 ; E = #FF? 
-  jr z,`nokey          ; Yes, no key is pressed
-  jr `loop      
-`nokey:
-  xor a                ; Store 0
-  ld (#6816),a    ; to ...
-  pop hl               ; Restore regs
-  pop bc        
-  ret                  ; Finished
-
-; Sets the control mode according to the
-; ControlMode variable
-SetControlMode:
-  call DelayForB
-  ld a,(ControlMode)
-  cp #00        ; Controlled from keyboard?
-  jp z,SelectKeyboard  ; Yes, jump to Keyboard
-  jp SelectKempston    ; No, jump to Kempston joystick
-
-; Unused data
-// $5B2B
-  .defb 0, 0
-
-; This subroutine checks if the current game point fits in the Hi-Score
-; table. If it is so, it asks for the player name and stores the new
-; score in the appropriate Hi-Score entry.
-EnterHiScore:
-  ld hl,(CurrentScore)
-  ex de,hl             ; DE = game score
-  ld bc,#0014          ; The last entry index offset in Hi-Score table
-  ld ix,HiScoreTable   
-  call CheckHsEntry    ; Current point is greater than the top entry
-                       ; in the Hi-Score table?
-  jr c,`newHiScore     ; Jump if there's a new Top Score
-
-; Test the next Hi-Score table entry
-`nextHsEntry:
-  push bc              ; Save Hi-Score table offset
-  ld bc,#0005          ; BC = Lenght of Hi-Score table entry
-  add ix,bc            ; IX points to next entry
-  pop hl               ; HL = last entry offset
-  and a                ; Reset carry
-  sbc hl,bc            
-  ret c                ; Return if the entire Hi-Score table checked
+  cp e
+  jr z,L5B16
+  jr L5B0C
+L5B16:
+  xor a
+  ld (#6816),a
+  pop hl
+  pop bc
+  ret
+L5B1D:
+  call L5BF1
+  ld a,(#67EE)
+  cp #00
+  jp z,L6185
+  jp L6196
+  nop
+  nop
+L5B2D:
+  ld hl,(#6819)
+  ex de,hl
+  ld bc,#0014
+  ld ix,#5C97
+  call L5B00
+  jr c,L5B51
+L5B3D:
+  push bc
+  ld bc,#0005
+  add ix,bc
+  pop hl
+  and a
+  sbc hl,bc
+  ret c
   push hl
-  pop bc               ; BC = subsequent Hi-Score offset
-  call CheckHsEntry    
-  jr c,`newHiScore     ; We found the Hi-Score entry shift down
-  jr `nextHsEntry      ; Move to next entry
-
-`newHiScore:
+  pop bc
+  call L5B00
+  jr c,L5B51
+  jr L5B3D
+L5B51:
   ld hl,#0000
   and a
-  sbc hl,bc            ; Is BC 0?
-  push de              ; Save the current score
+  sbc hl,bc
+  push de
   push ix
-  pop hl               ; HL points to the Hi-Score entry to enter
-  push hl              ; Save the Hi-Score entry pointer
-  jr z,`enterName      ; BC is zero, so no entries to move
-  ld hl,HiScoreTable + 19 ; Last byte of entry 4 in H-Score table
-  ld de,HiScoreTable + 24 ; Last byte of Hi-Score table
-  lddr                    ; Shift down the Hi-Score table
-
-; The player reached a Hi-Scrore
-; At this point the stack stores the address of the Hi-Score entry
-; and the score to store to that entry
-`enterName:
-  call ClearScreen
+  pop hl
+  push hl
+  jr z,L5B66
+  ld hl,#5CAA
+  ld de,#5CAF
+  lddr
+L5B66:
+  call L7C65
   ld bc,#0808
-  call PrintAt         ; AT 8, 8
-  ld hl,CONGRATS_MSG
-  ld b,#10             
-  call PrintMsg        ; Print Congrats
+  call L689B
+  ld hl,#60EE
+  ld b,#10
+  call L6168
   ld bc,#0A00
-  call PrintAt         ; AT 10, 0
-  ld hl,YOURSCORE_MSG
+  call L689B
+  ld hl,#60FE
   ld b,#58
-  call PrintMsg        ; Print Hi-Score message
+  call L6168
   ld bc,#100E
-  push bc              ; Save position
-  call PrintAt         ; AT 16, 14
-  ld b,#03             ; Print 3...
-`loop:         
+  push bc
+  call L689B
+  ld b,#03
+L5B8E:
   ld a,#3F
-  rst #10              ; '?' characters
-  djnz `loop
-  pop bc               ; Restore position
-  call PrintAt         ; AT 16, 14
-  ld a,#41             ; A = 'A'
+  rst #10
+  djnz L5B8E
+  pop bc
+  call L689B
+  ld a,#41
   push af
-  rst #10              ; Print 'A'
+  rst #10
   pop af
-`nextNameChar:
+L5B9C:
   push bc
   push af
-  call KEY_SCAN        ; Scan the keyboard
+  call KEY_SCAN
   ld a,#04
-  cp e                 ; Is arrow left pressed?
+  cp e
   pop hl
-  jr nz,`checkRight    ; No, check other keys
-
-; Arrow left key pressed
-  ld a,h              
-  dec a                ; Decrement letter code
-  cp #40               ; Reached '@'?
-  jr nz,`storePrev
-  ld a,#5A             ; Set letter to 'Z'
-`storePrev:
-  ld h,a               ; Save the current letter in H
-`checkRight:
-  ld a,#13
-  cp e                 ; Is arrow right pressed?
+  jr nz,L5BB0
   ld a,h
-  jr nz,`storeNext
-
-; Arrow right pressed
-  inc a                ; Increment letter code 
-  cp #5B               ; Reached '['?
-  jr nz,`storeNext
-  ld a,'A'             ; Set letter to 'A'
-`storeNext:
-  ld h,a               ; Save the current letter in H
+  dec a
+  cp #40
+  jr nz,L5BAF
+  ld a,#5A
+L5BAF:
+  ld h,a
+L5BB0:
+  ld a,#13
+  cp e
+  ld a,h
+  jr nz,L5BBD
+  inc a
+  cp #5B
+  jr nz,L5BBD
+  ld a,#41
+L5BBD:
+  ld h,a
   pop bc
   push de
   push hl
-  call PrintAt         ; Set the current position
+  call L689B
   pop hl
   pop de
   ld a,h
-  rst #10              ; Print the current letter
-  call DelayForB       ; Wait
-  ld a,(GhostFlags)         ; TODO
+  rst #10
+  call L5BF1
+  ld a,(#6816)
   bit 7,a
-  call nz,WaitForNoKey ; Wait until the key is released
+  call nz,L5B0A
   ld a,#21
-  cp e                 ; Is 'ENTER' pressed?
+  cp e
   ld a,h
-  jr nz,`nextNameChar  ; No, back to check
-  pop hl               ; HL points to the location in the Hi-Score table
-  ld (hl),a            ; Store the specified letter
-  inc hl               ; Increment name pointer
-  push hl              ; Save name pointer
-  xor a   
-  set 7,a              ; A = #80 (Bit 7 set)
-  ld (GhostFlags),a         ; Store the state flag
-  inc c                ; Increment column position
-  ld a,#11           
-  cp c                 ; Column 17 reached?
-  ld a,'A'             ; A = 'A'
-  jr nz,`nextNameChar  ; There are still name letters to collect
-
-; Now it's time to store the score value
-  pop hl               ; restore Hi-Score pointer
-  pop de               ; Restore game point
+  jr nz,L5B9C
+  pop hl
+  ld (hl),a
+  inc hl
+  push hl
+  xor a
+  set 7,a
+  ld (#6816),a
+  inc c
+  ld a,#11
+  cp c
+  ld a,#41
+  jr nz,L5B9C
+  pop hl
+  pop de
   ld (hl),e
   inc hl
-  ld (hl),d            ; Store game point to Hi-Score table
-  ret                  ; Finished
-
-
-
+  ld (hl),d
+  ret
 L5BF1:
   push bc
   ld b,#40
@@ -246,9 +177,6 @@ L5BF7:
   djnz L5BF4
   pop bc
   ret
-
-  .comparebin "../MemoryFiles/PacManMemory.bin"
-
 SYS_VARS:
   .defb #FF, #00, #1C, #20, #FF, #00, #1E, #0D
   .defb #0D, #23, #05, #00, #00, #06, #10, #16
@@ -2390,9 +2318,6 @@ L7372:
   ret
   ld sp,#5D7E
   call #8000
-
- ; The loader enters the code at this point
-EntryPoint:
   jp L6F0A
   nop
   nop
@@ -4366,5 +4291,3 @@ L7CFA:
   .defg ..X..X..
   .defg .X....X.
   .defg X......X
-
-.comparebin "../MemoryFiles/PacManMemory.bin"

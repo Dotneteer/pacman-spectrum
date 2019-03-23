@@ -9,7 +9,9 @@ GHOST:
 	Y: .defb #00       ; Column position
 	DX: .defb #00      ; Row velocity
 	DY: .defb #00      ; Column velocity
-	  .defs 3          ; To be reengineered
+	  .defb #00        ; To be reengineered
+	Back: .defb #00    ; The character behind the ghost
+	  .defb #00
     Color: .defb #00   ; Ghost ink color
 	  .defs 1          ; To be reenginered
   .ends
